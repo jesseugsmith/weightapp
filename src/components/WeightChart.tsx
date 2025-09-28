@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Line } from 'react-chartjs-2';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -14,6 +15,7 @@ import {
   Tooltip,
   Legend
 } from 'chart.js';
+import { fadeInUp, popIn, bounceScale } from '@/utils/animations';
 
 type TimeFrame = '1W' | '1M' | '3M' | '6M' | '1Y' | 'ALL';
 
@@ -132,14 +134,56 @@ export default function WeightChart() {
     { label: 'All', value: 'ALL' },
   ];
 
-  if (loading) return <div className="h-64 flex items-center justify-center">Loading...</div>;
-  if (error) return <div className="text-red-500">{error}</div>;
+  if (loading) return (
+    <motion.div
+      className="h-64 flex items-center justify-center"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.5 }}
+    >
+      <motion.div
+        animate={{
+          scale: [1, 1.2, 1],
+          rotate: [0, 360]
+        }}
+        transition={{
+          duration: 1.5,
+          repeat: Infinity,
+          ease: "linear"
+        }}
+        className="w-12 h-12 border-4 border-indigo-500 rounded-full border-t-transparent"
+      />
+    </motion.div>
+  );
+
+  if (error) return (
+    <motion.div
+      className="text-red-500"
+      initial="hidden"
+      animate="visible"
+      variants={fadeInUp}
+    >
+      {error}
+    </motion.div>
+  );
+
   if (weightData.length === 0) {
     return (
-      <div className="h-64 flex flex-col items-center justify-center text-gray-500">
-        <p>No weight entries yet</p>
-        <p className="text-sm mt-2">Log your weight to start tracking your progress</p>
-      </div>
+      <motion.div
+        className="h-64 flex flex-col items-center justify-center text-gray-500"
+        initial="hidden"
+        animate="visible"
+        variants={fadeInUp}
+      >
+        <motion.p variants={popIn}>No weight entries yet</motion.p>
+        <motion.p
+          className="text-sm mt-2"
+          variants={popIn}
+          transition={{ delay: 0.2 }}
+        >
+          Log your weight to start tracking your progress
+        </motion.p>
+      </motion.div>
     );
   }
 
@@ -194,44 +238,106 @@ export default function WeightChart() {
     }
   };
 
+  const weightChange = filteredData.length > 0
+    ? filteredData[filteredData.length - 1].weight - filteredData[0].weight
+    : 0;
+
   return (
-    <div className="bg-white p-6 rounded-lg shadow">
-      <div className="flex justify-end mb-4 space-x-2">
+    <motion.div
+      className="bg-white p-6 rounded-lg shadow"
+      initial="hidden"
+      animate="visible"
+      variants={fadeInUp}
+    >
+      <motion.div
+        className="flex justify-end mb-4 space-x-2"
+        variants={{
+          visible: {
+            transition: {
+              staggerChildren: 0.1
+            }
+          }
+        }}
+      >
         {timeFrameButtons.map(({ label, value }) => (
-          <button
+          <motion.button
             key={value}
             onClick={() => setTimeFrame(value)}
-            className={`px-3 py-1 rounded text-sm font-medium ${
+            className={`px-3 py-1 rounded text-sm font-medium transform transition-colors ${
               timeFrame === value
                 ? 'bg-indigo-600 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            variants={popIn}
           >
             {label}
-          </button>
+          </motion.button>
         ))}
-      </div>
-      <div className="h-64">
+      </motion.div>
+
+      <motion.div
+        className="h-64"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
         <Line data={data} options={options} />
-      </div>
-      <div className="mt-4 text-center text-sm text-gray-500">
+      </motion.div>
+
+      <AnimatePresence>
         {filteredData.length > 0 && (
-          <div className="flex justify-center space-x-8">
-            <div>
-              <span className="font-medium">Starting Weight:</span>{' '}
-              {filteredData[0].weight}lbs
-            </div>
-            <div>
-              <span className="font-medium">Current Weight:</span>{' '}
-              {filteredData[filteredData.length - 1].weight}lbs
-            </div>
-            <div>
-              <span className="font-medium">Total Change:</span>{' '}
-              {(filteredData[filteredData.length - 1].weight - filteredData[0].weight).toFixed(1)}lbs
-            </div>
-          </div>
+          <motion.div
+            className="mt-4 text-center text-sm"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+          >
+            <motion.div
+              className="flex justify-center space-x-8"
+              variants={{
+                visible: {
+                  transition: {
+                    staggerChildren: 0.1
+                  }
+                }
+              }}
+            >
+              <motion.div
+                variants={popIn}
+                className="p-3 rounded-lg bg-gray-50"
+              >
+                <span className="font-medium">Starting Weight:</span>{' '}
+                <span className="text-indigo-600">{filteredData[0].weight}lbs</span>
+              </motion.div>
+
+              <motion.div
+                variants={popIn}
+                className="p-3 rounded-lg bg-gray-50"
+              >
+                <span className="font-medium">Current Weight:</span>{' '}
+                <span className="text-indigo-600">{filteredData[filteredData.length - 1].weight}lbs</span>
+              </motion.div>
+
+              <motion.div
+                variants={popIn}
+                className="p-3 rounded-lg bg-gray-50"
+                whileHover={{ scale: 1.05 }}
+              >
+                <span className="font-medium">Total Change:</span>{' '}
+                <motion.span
+                  className={weightChange <= 0 ? "text-green-500" : "text-red-500"}
+                  initial={{ scale: 1 }}
+                  whileHover={bounceScale}
+                >
+                  {weightChange.toFixed(1)}lbs
+                </motion.span>
+              </motion.div>
+            </motion.div>
+          </motion.div>
         )}
-      </div>
-    </div>
+      </AnimatePresence>
+    </motion.div>
   );
 }

@@ -2,13 +2,16 @@
 
 import { AuthProvider } from "@/contexts/AuthContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
+import { PermissionProvider } from "@/contexts/PermissionContext";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <AuthProvider>
-      <NotificationProvider>
-        {children}
-      </NotificationProvider>
+      <PermissionProvider>
+        <NotificationProvider>
+          {children}
+        </NotificationProvider>
+      </PermissionProvider>
     </AuthProvider>
   );
 }

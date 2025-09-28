@@ -47,6 +47,18 @@ export default function JoinCompetitionClient({ id }: JoinCompetitionClientProps
           return;
         }
 
+        // Get the user's current weight to use as starting weight
+        const { data: weightData, error: weightError } = await supabase
+          .from('weight_entries')
+          .select('weight')
+          .eq('user_id', user.id)
+          .order('date', { ascending: false })
+          .limit(1);
+
+        if (weightError) throw weightError;
+        
+        const startingWeight = weightData?.[0]?.weight;
+
         // Join the competition
         const { error: joinError } = await supabase
           .from('competition_participants')
@@ -54,6 +66,8 @@ export default function JoinCompetitionClient({ id }: JoinCompetitionClientProps
             {
               competition_id: id,
               user_id: user.id,
+              starting_weight: startingWeight,
+              current_weight: startingWeight
             },
           ]);
 

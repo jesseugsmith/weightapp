@@ -9,12 +9,15 @@ export type WeightEntry = {
 
 export type Profile = {
   id: string;
-  email: string;
-  username?: string;
-  avatar_url?: string;
+  user_id: string;
+  first_name?: string;
+  last_name?: string;
+  nickname?: string;
+  date_of_birth?: string;
   height?: number;
   target_weight?: number; // in lbs
   created_at: string;
+  updated_at: string;
 };
 
 export type Friend = {
@@ -42,6 +45,15 @@ export type Competition = {
   created_by: string;
   created_at: string;
   status: 'draft' | 'started' | 'completed';
+};
+
+export type Prize = {
+  id: string;
+  competition_id: string;
+  rank: number;
+  prize_amount: number;
+  prize_description?: string;
+  created_at: string;
 };
 
 export type CompetitionParticipant = {
@@ -89,4 +101,57 @@ export type Notification = {
   read: boolean;
   action_url?: string;
   created_at: string;
+};
+
+export type SignupToken = {
+  id: string;
+  token: string;
+  email: string;
+  expires_at: string;
+  created_at: string;
+  created_by?: string;
+  used_at?: string;
+  used_by?: string;
+};
+
+export type Role = {
+  id: string;
+  name: string;
+  description?: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Permission = {
+  id: string;
+  name: string;
+  description?: string;
+  resource: string;
+  action: string;
+  created_at: string;
+};
+
+export type RolePermission = {
+  id: string;
+  role_id: string;
+  permission_id: string;
+  created_at: string;
+};
+
+export type UserRole = {
+  id: string;
+  user_id: string;
+  role_id: string;
+  created_at: string;
+  created_by?: string;
+  role?: Role;
+  permissions?: Permission[];
+};
+
+export type AdminRole = {
+  id: string;
+  user_id: string;
+  role_type: 'super_admin' | 'admin';
+  created_at: string;
+  created_by?: string;
 };

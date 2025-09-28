@@ -13,6 +13,9 @@ export default function Dashboard() {
   const { user } = useAuth();
   const [activeCompetitions, setActiveCompetitions] = useState<CompetitionParticipant[]>([]);
   const [latestWeight, setLatestWeight] = useState<number | null>(null);
+  const [startingWeight, setStartingWeight] = useState<number | null>(null);
+  const [totalWeightLoss, setTotalWeightLoss] = useState<number | null>(null);
+  const [profile, setProfile] = useState<{ first_name?: string, nickname?: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -26,6 +29,19 @@ export default function Dashboard() {
 
   const fetchData = async () => {
     try {
+      // Fetch user profile
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('first_name, nickname')
+        .eq('user_id', user?.id)
+        .single();
+
+      if (profileError) {
+        console.error('Error fetching profile:', profileError);
+      } else {
+        setProfile(profileData);
+      }
+
       // Fetch latest weight
       const { data: weightData, error: weightError } = await supabase
         .from('weight_entries')
@@ -50,6 +66,27 @@ export default function Dashboard() {
 
       if (weightData) {
         setLatestWeight(weightData.weight);
+      }
+
+      // Fetch first weight entry (starting weight)
+      const { data: firstWeightData, error: firstWeightError } = await supabase
+        .from('weight_entries')
+        .select('weight')
+        .eq('user_id', user?.id)
+        .order('date', { ascending: true })
+        .limit(1)
+        .single();
+
+      if (firstWeightError && firstWeightError.code !== 'PGRST116') {
+        console.error('Error fetching first weight:', firstWeightError);
+      }
+
+      if (firstWeightData) {
+        setStartingWeight(firstWeightData.weight);
+        if (weightData) {
+          const weightLoss = firstWeightData.weight - weightData.weight;
+          setTotalWeightLoss(weightLoss);
+        }
       }
 
       // Fetch active competitions with progress
@@ -152,14 +189,46 @@ export default function Dashboard() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-8 flex justify-between items-center">
-        <h1 className="text-2xl font-semibold text-gray-900">Dashboard</h1>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700"
-        >
-          Log Weight
-        </button>
+      <div className="mb-8">
+        <div className="flex justify-between items-start">
+          <div>
+            <h1 className="text-3xl font-semibold text-gray-900">
+              {(() => {
+                const hour = new Date().getHours();
+                let greeting = 'Good ';
+                if (hour < 12) greeting += 'morning';
+                else if (hour < 18) greeting += 'afternoon';
+                else greeting += 'evening';
+                return `${greeting}${profile?.first_name ? `, ${profile.first_name}` : ''}`;
+              })()}
+            </h1>
+            {latestWeight && (
+              <div className="mt-4">
+                <div className="flex flex-col space-y-2">
+                  <div className="text-lg">
+                    <p className="text-gray-600">Current weight:</p>
+                    <p className="font-semibold text-gray-900">{latestWeight.toFixed(1)} lbs</p>
+                  </div>
+                  {startingWeight && (
+                    <div className="text-lg">
+                      <p className="text-gray-600">Weight lost:</p>
+                      <p className={totalWeightLoss && totalWeightLoss > 0 ? "font-semibold text-green-600" : "font-semibold text-gray-900"}>
+                        {totalWeightLoss ? `${totalWeightLoss.toFixed(1)} lbs` : "0 lbs"}
+                        {totalWeightLoss && totalWeightLoss > 0 && " 🎉"}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700"
+          >
+            Log Weight
+          </button>
+        </div>
       </div>
 
       {/* Weight Progress Chart */}

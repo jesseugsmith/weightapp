@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/utils/supabase';
 import { Competition, CompetitionParticipant } from '@/types/database.types';
 import LoadingSpinner from '@/components/LoadingSpinner';
@@ -12,6 +13,7 @@ import LeaderboardCard from '@/components/LeaderboardCard';
 
 export default function Competitions() {
   const { user } = useAuth();
+  const router = useRouter();
   const [competitions, setCompetitions] = useState<Competition[]>([]);
   const [myCompetitions, setMyCompetitions] = useState<CompetitionParticipant[]>([]);
   const [loading, setLoading] = useState(true);
@@ -92,12 +94,27 @@ export default function Competitions() {
     if (!user) return;
 
     try {
+      // First get the user's current weight
+      const { data: weightData, error: weightError } = await supabase
+        .from('weight_entries')
+        .select('weight')
+        .eq('user_id', user.id)
+        .order('date', { ascending: false })
+        .limit(1);
+
+      if (weightError) throw weightError;
+      
+      const startingWeight = weightData?.[0]?.weight;
+      
+      // Insert the participant with their starting weight
       const { error } = await supabase
         .from('competition_participants')
         .insert([
           {
             competition_id: competitionId,
             user_id: user.id,
+            starting_weight: startingWeight,
+            current_weight: startingWeight
           },
         ]);
 
@@ -149,7 +166,8 @@ export default function Competitions() {
             {myCompetitions.map((participation) => (
               <div
                 key={participation.id}
-                className="bg-white rounded-lg shadow overflow-hidden hover:shadow-lg transition-shadow duration-200"
+                className="bg-white rounded-lg shadow overflow-hidden hover:shadow-lg transition-shadow duration-200 cursor-pointer"
+                onClick={() => participation.competition && router.push(`/competitions/${participation.competition.id}`)}
               >
                 <div className="p-6">
                   <div className="flex items-start justify-between mb-4">

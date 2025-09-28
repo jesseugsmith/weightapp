@@ -9,6 +9,7 @@ interface LeaderboardEntry {
   user_email: string;
   weight_loss_percentage: number;
   current_weight: number;
+  starting_weight: number;
   rank: number;
   prize_amount?: number;
   prize_description?: string;
@@ -34,6 +35,8 @@ export default function LeaderboardCard({ competitionId, isEnded }: LeaderboardC
         const { data, error: standingsError } = await query;
 
         if (standingsError) throw standingsError;
+        
+        console.log('Leaderboard data:', data);
 
         // If competition is ended, fetch winners and prizes
         if (isEnded) {
@@ -96,13 +99,24 @@ export default function LeaderboardCard({ competitionId, isEnded }: LeaderboardC
               </span>
               <div>
                 <p className="font-medium">{entry.user_email}</p>
-                <p className="text-sm text-gray-500">
-                  {entry.weight_loss_percentage.toFixed(2)}% lost
-                  {entry.current_weight && (
-                    <span className="ml-2">
-                      (Current: {entry.current_weight}lbs)
-                    </span>
-                  )}
+                <p className="text-sm">
+                  <span className={
+                    entry.starting_weight > entry.current_weight
+                      ? 'text-green-600'
+                      : entry.starting_weight < entry.current_weight
+                      ? 'text-red-600'
+                      : 'text-gray-500'
+                  }>
+                    {entry.starting_weight && !isNaN(entry.starting_weight) && 
+                     entry.current_weight && !isNaN(entry.current_weight)
+                      ? `${Math.abs(entry.starting_weight - entry.current_weight).toFixed(1)} lbs ${
+                        entry.starting_weight > entry.current_weight ? 'lost' : 'gained'
+                      }`
+                      : '0 lbs'}
+                  </span>
+                  <span className="ml-2 text-gray-500">
+                    (Current: {entry.current_weight ? `${entry.current_weight.toFixed(1)}lbs` : 'Not logged'})
+                  </span>
                 </p>
               </div>
             </div>

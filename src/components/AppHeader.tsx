@@ -1,21 +1,11 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/contexts/AuthContext';
 import NotificationBell from './NotificationBell';
+import UserMenu from './UserMenu';
 
 export default function AppHeader() {
   const router = useRouter();
-  const { signOut } = useAuth();
-
-  const handleSignOut = async () => {
-    try {
-      await signOut();
-      router.push('/signin');
-    } catch (error) {
-      console.error('Error signing out:', error);
-    }
-  };
 
   return (
     <nav className="bg-white shadow-sm">
@@ -46,12 +36,7 @@ export default function AppHeader() {
           </div>
           <div className="flex items-center space-x-4">
             <NotificationBell />
-            <button
-              onClick={handleSignOut}
-              className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
-            >
-              Sign out
-            </button>
+            <UserMenu />
           </div>
         </div>
       </div>
