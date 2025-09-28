@@ -80,7 +80,7 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 3. Configure environment variables in Vercel dashboard:
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `NEXT_PUBLIC_APP_URL`
+   # App URL is automatically provided by Vercel
    - `NEXT_PUBLIC_GOOGLE_CLIENT_ID` (if using Google OAuth)
 4. Deploy!
 

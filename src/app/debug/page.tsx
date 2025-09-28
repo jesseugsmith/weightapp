@@ -15,9 +15,9 @@ export default function DebugPage() {
           </code>
         </div>
         <div>
-          <h2 className="font-semibold">NEXT_PUBLIC_APP_URL:</h2>
+          <h2 className="font-semibold">App URL:</h2>
           <code className="block bg-gray-100 p-2 rounded">
-            {process.env.NEXT_PUBLIC_APP_URL || 'Not set'}
+            {`https://${process.env.NEXT_PUBLIC_VERCEL_URL}` || 'Not set'}
           </code>
         </div>
         <div>

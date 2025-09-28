@@ -54,7 +54,7 @@ export async function POST(request: Request) {
     }
 
     // Generate the signup URL
-    const signupUrl = `${process.env.NEXT_PUBLIC_APP_URL}/signup?token=${token}`;
+    const signupUrl = `https://${process.env.NEXT_PUBLIC_VERCEL_URL}/signup?token=${token}`;
 
     return NextResponse.json({ url: signupUrl });
   } catch (error) {
