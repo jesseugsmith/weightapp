@@ -91,7 +91,7 @@ export default function UserMenu() {
       <AnimatePresence>
         {isOpen && (
         <motion.div
-          className="absolute right-0 mt-2 w-48 rounded-md shadow-lg py-1 bg-white ring-1 ring-black ring-opacity-5"
+          className="absolute right-0 mt-2 w-64 rounded-md shadow-lg py-1 bg-white ring-1 ring-black ring-opacity-5"
           initial="hidden"
           animate="visible"
           exit="hidden"
@@ -109,10 +109,7 @@ export default function UserMenu() {
             }
           }}
         >
-          <motion.div
-            className="px-4 py-2 border-b border-gray-100"
-            variants={slideInFromRight}
-          >
+          <div className="px-4 py-2 border-b border-gray-100">
             {loading ? (
               <p className="text-sm text-gray-500">Loading profile...</p>
             ) : profile?.first_name ? (
@@ -120,15 +117,14 @@ export default function UserMenu() {
             ) : (
               <p className="text-sm text-gray-500">No name set</p>
             )}
-            <p className="text-sm text-gray-500">{user.email}</p>
+            <p className="text-sm text-gray-500 break-all">{user.email}</p>
             {error && (
               <p className="text-xs text-red-500">Error loading profile</p>
             )}
-          </motion.div>
+          </div>
 
           <div className="py-1">
             {[
-              { href: '/dashboard', text: 'Dashboard' },
               { href: '/profile', text: 'Profile Settings' }
             ].map((item, index) => (
               <motion.a
