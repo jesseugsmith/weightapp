@@ -25,29 +25,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Only admins can create invites' }, { status: 403 });
     }
 
-    // Get the email from request body
-    const { email } = await request.json();
-    if (!email) {
-      return NextResponse.json({ error: 'Email is required' }, { status: 400 });
-    }
-
-    // Generate a unique token
-    const token = nanoid(32);
-    
-    // Set expiration to 7 days from now
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7);
-
-    // Insert the token into the database
-    const { error: insertError } = await supabase
-      .from('signup_tokens')
-      .insert([
-        {
-          token,
-          email,
-          expires_at: expiresAt.toISOString(),
-        }
-      ]);
+    // Create a new invite token using the RPC function
+    const { data: tokenData, error: insertError } = await supabase
+      .rpc('create_invite_token');
 
     if (insertError) {
       throw insertError;
@@ -57,9 +37,12 @@ export async function POST(request: Request) {
     const { getBaseUrl } = await import('@/utils/environment');
     
     // Generate the signup URL using the base URL utility
-    const signupUrl = `${getBaseUrl()}/signup?token=${token}`;
+    const signupUrl = `${getBaseUrl()}/signup?token=${tokenData.token}`;
 
-    return NextResponse.json({ url: signupUrl });
+    return NextResponse.json({ 
+      url: signupUrl,
+      expiresAt: tokenData.expires_at 
+    });
   } catch (error) {
     console.error('Error creating invite:', error);
     return NextResponse.json(

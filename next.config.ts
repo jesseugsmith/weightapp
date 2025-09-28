@@ -22,6 +22,12 @@ const nextConfig: NextConfig = {
 
   reactStrictMode: true,
 
+  // Make environment variables available at build time
+  env: {
+    VERCEL_URL: process.env.VERCEL_URL,
+    VERCEL_ENV: process.env.VERCEL_ENV,
+  },
+
   async headers() {
     return [
       {

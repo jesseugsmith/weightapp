@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { supabase } from '@/utils/supabase';
 import { Competition, Prize } from '@/types/database.types';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import { useAuth } from '@/contexts/AuthContext';
 import LeaderboardCard from '@/components/LeaderboardCard';
 
 export default function CompetitionDetails() {
@@ -13,8 +14,16 @@ export default function CompetitionDetails() {
   const [prizes, setPrizes] = useState<Prize[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
+    async function checkAdminStatus() {
+      const { data: adminStatus } = await supabase.rpc('is_admin');
+      setIsAdmin(!!adminStatus);
+    }
+
     async function fetchCompetitionDetails() {
       try {
         // Fetch competition details
@@ -46,9 +55,46 @@ export default function CompetitionDetails() {
     }
 
     if (params.id) {
+      checkAdminStatus();
       fetchCompetitionDetails();
     }
   }, [params.id]);
+
+  const handleSendDetails = async () => {
+    if (!competition) return;
+    
+    setSending(true);
+    setError(null);
+    setSuccess(null);
+    
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-competition-details`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token}`,
+          },
+          body: JSON.stringify({ competition_id: competition.id }),
+        }
+      );
+
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to send competition details');
+      }
+
+      setSuccess('Competition details sent successfully to all participants!');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send competition details');
+    } finally {
+      setSending(false);
+    }
+  };
 
   if (loading) return <LoadingSpinner message="Loading competition details..." />;
   if (error) return <div className="text-red-500">{error}</div>;
@@ -57,16 +103,46 @@ export default function CompetitionDetails() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-semibold text-gray-900">{competition.name}</h1>
-        <p className="mt-2 text-lg text-gray-600">{competition.description}</p>
-        
-        <div className="mt-4 flex items-center text-sm text-gray-500">
-          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" 
-              d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-          </svg>
-          {new Date(competition.start_date).toLocaleDateString()} - {new Date(competition.end_date).toLocaleDateString()}
+        <div className="flex justify-between items-start">
+          <div>
+            <h1 className="text-3xl font-semibold text-gray-900">{competition.name}</h1>
+            <p className="mt-2 text-lg text-gray-600">{competition.description}</p>
+            
+            <div className="mt-4 flex items-center text-sm text-gray-500">
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" 
+                  d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              {new Date(competition.start_date).toLocaleDateString()} - {new Date(competition.end_date).toLocaleDateString()}
+            </div>
+          </div>
+
+          {isAdmin && (
+            <div>
+              <button
+                onClick={handleSendDetails}
+                disabled={sending}
+                className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white 
+                  ${sending ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}
+                  focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500`}
+              >
+                {sending ? 'Sending...' : 'Send Competition Update'}
+              </button>
+            </div>
+          )}
         </div>
+
+        {error && (
+          <div className="mt-4 rounded-md bg-red-50 p-4">
+            <div className="text-sm text-red-700">{error}</div>
+          </div>
+        )}
+        
+        {success && (
+          <div className="mt-4 rounded-md bg-green-50 p-4">
+            <div className="text-sm text-green-700">{success}</div>
+          </div>
+        )}
 
         {/* Competition Status Badge */}
         <div className="mt-4">

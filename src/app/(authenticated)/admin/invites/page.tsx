@@ -7,7 +7,6 @@ import { supabase } from '@/utils/supabase';
 
 interface InviteToken {
   id: string;
-  email: string;
   token: string;
   created_at: string;
   expires_at: string;
@@ -54,8 +53,7 @@ export default function AdminInvites() {
     setTokens(data || []);
   };
 
-  const handleCreateInvite = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCreateInvite = async () => {
     setError('');
     setSuccess('');
     setCreating(true);
@@ -63,8 +61,7 @@ export default function AdminInvites() {
     try {
       const response = await fetch('/api/invite', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
+        headers: { 'Content-Type': 'application/json' }
       });
 
       const data = await response.json();
@@ -73,8 +70,9 @@ export default function AdminInvites() {
         throw new Error(data.error || 'Failed to create invite');
       }
 
-      setSuccess('Invite created successfully! URL: ' + data.url);
-      setEmail('');
+      setSuccess('Invite link created successfully!');
+      await navigator.clipboard.writeText(data.url);
+      setSuccess('Invite link created and copied to clipboard! Expires in 48 hours.');
       fetchTokens(); // Refresh the list
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to create invite');
@@ -124,28 +122,17 @@ export default function AdminInvites() {
               </div>
             )}
 
-            <form onSubmit={handleCreateInvite} className="mt-5">
-              <div className="flex gap-4">
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Enter email address"
-                  className="flex-1 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                  disabled={creating}
-                />
-                <button
-                  type="submit"
-                  disabled={creating}
-                  className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white 
-                    ${creating ? 'bg-indigo-400' : 'bg-indigo-600 hover:bg-indigo-700'}
-                    focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500`}
-                >
-                  {creating ? 'Creating...' : 'Create Invite'}
-                </button>
-              </div>
-            </form>
+            <div className="mt-5">
+              <button
+                onClick={handleCreateInvite}
+                disabled={creating}
+                className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white 
+                  ${creating ? 'bg-indigo-400' : 'bg-indigo-600 hover:bg-indigo-700'}
+                  focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500`}
+              >
+                {creating ? 'Creating...' : 'Generate Invite Link'}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -159,9 +146,6 @@ export default function AdminInvites() {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Email
-                    </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Created
                     </th>
@@ -179,9 +163,6 @@ export default function AdminInvites() {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {tokens.map((token) => (
                     <tr key={token.id}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {token.email}
-                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {new Date(token.created_at).toLocaleDateString()}
                       </td>

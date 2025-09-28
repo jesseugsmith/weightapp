@@ -28,7 +28,7 @@ export default function SignUpForm() {
       try {
         const { data, error: rpcError } = await supabase.rpc(
           'check_signup_token',
-          { token_param: token, email_param: email }
+          { token_param: token }
         );
 
         if (rpcError) throw rpcError;
@@ -69,9 +69,9 @@ export default function SignUpForm() {
       if (signUpError) throw signUpError;
 
       if (signUpData?.user) {
-        // Mark token as used
+        // Record token usage
         const { error: tokenError } = await supabase.rpc(
-          'use_signup_token',
+          'record_token_usage',
           { token_param: token, user_id_param: signUpData.user.id }
         );
 
