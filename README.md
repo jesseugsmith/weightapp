@@ -1,4 +1,46 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Weight App
+
+A weight tracking and competition platform built with Next.js and Supabase.
+
+## Deployment Instructions
+
+### Prerequisites
+
+- Node.js 18+ and npm
+- A Supabase account and project
+- (Optional) A Vercel account for deployment
+
+### Environment Setup
+
+1. Copy the environment variables template:
+   ```bash
+   cp .env.example .env.local
+   ```
+
+2. Fill in your environment variables in `.env.local`:
+   - Get Supabase credentials from your project dashboard
+   - Set up Google OAuth if using social login
+   - Configure your production APP_URL
+
+### Database Setup
+
+1. Apply migrations to your Supabase project:
+   ```bash
+   # Install Supabase CLI if you haven't already
+   npm install -g supabase-cli
+
+   # Link to your project
+   supabase link --project-ref your-project-ref
+
+   # Push the migrations
+   supabase db push
+   ```
+
+2. Create your first admin user:
+   ```sql
+   -- Run this in Supabase SQL editor after signing up
+   update profiles set is_admin = true where id = 'your-user-id';
+   ```
 
 ## Getting Started
 
@@ -29,8 +71,40 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-## Deploy on Vercel
+## Production Deployment
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Option 1: Vercel (Recommended)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Push your code to GitHub
+2. Import your repository in Vercel
+3. Configure environment variables in Vercel dashboard:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `NEXT_PUBLIC_APP_URL`
+   - `NEXT_PUBLIC_GOOGLE_CLIENT_ID` (if using Google OAuth)
+4. Deploy!
+
+### Post-Deployment Checklist
+
+1. Configure Supabase Authentication settings:
+   - Add your production domain to the Site URL
+   - Configure OAuth providers if using
+   - Update email templates
+
+2. Test user flows:
+   - Sign up process
+   - Admin invite system
+   - Competition creation
+   - Weight logging
+
+3. Monitor:
+   - Set up error tracking (e.g., Sentry)
+   - Configure logging
+   - Set up uptime monitoring
+
+## Security Considerations
+
+1. All database access is controlled through RLS policies
+2. Admin access is restricted through database policies
+3. Authentication is handled by Supabase
+4. All API routes validate admin status for protected operations

@@ -1,0 +1,10 @@
+tasks:
+  - name: Check ending competitions
+    schedule: 0 0 * * * # Run at midnight every day
+    function: check-ending-competitions
+    params: 
+
+  - name: Check starting competitions
+    schedule: 0 0 * * * # Run at midnight every day
+    function: check-starting-competitions
+    params: 
