@@ -27,7 +27,7 @@ export default function LeaderboardCard({ competitionId, isEnded }: LeaderboardC
   useEffect(() => {
     async function fetchLeaderboard() {
       try {
-        let query = supabase
+        const query = supabase
           .rpc('get_competition_standings', { competition_id: competitionId })
           .order('weight_loss_percentage', { ascending: false });
 

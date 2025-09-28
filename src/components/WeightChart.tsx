@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '@/utils/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Line } from 'react-chartjs-2';
@@ -40,7 +40,7 @@ export default function WeightChart() {
   const [error, setError] = useState<string | null>(null);
   const [timeFrame, setTimeFrame] = useState<TimeFrame>('1M');
 
-  const fetchWeightData = async () => {
+  const fetchWeightData = useCallback(async () => {
     if (!user) return;
 
     try {
@@ -58,7 +58,7 @@ export default function WeightChart() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -94,7 +94,7 @@ export default function WeightChart() {
     };
 
     fetchData();
-  }, [user]);
+  }, [user, fetchWeightData]);
 
   const filteredData = useMemo(() => {
     if (timeFrame === 'ALL') return weightData;
@@ -171,7 +171,7 @@ export default function WeightChart() {
       },
       tooltip: {
         callbacks: {
-          label: function(context: any) {
+          label: function(context: { parsed: { y: number } }) {
             return `Weight: ${context.parsed.y}lbs`;
           }
         }
