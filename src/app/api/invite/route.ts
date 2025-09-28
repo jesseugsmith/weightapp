@@ -53,8 +53,11 @@ export async function POST(request: Request) {
       throw insertError;
     }
 
-    // Generate the signup URL
-    const signupUrl = `https://${process.env.NEXT_PUBLIC_VERCEL_URL}/signup?token=${token}`;
+    // Import the base URL utility
+    const { getBaseUrl } = await import('@/utils/environment');
+    
+    // Generate the signup URL using the base URL utility
+    const signupUrl = `${getBaseUrl()}/signup?token=${token}`;
 
     return NextResponse.json({ url: signupUrl });
   } catch (error) {

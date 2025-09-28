@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/utils/supabase';
 import { Profile } from '@/types/database.types';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import { getBaseUrl } from '@/utils/environment';
 
 interface InviteMembersModalProps {
   isOpen: boolean;
@@ -139,7 +140,7 @@ export default function InviteMembersModal({
           title: 'Competition Invite',
           message: `You've been invited to join "${competitionName}"!`,
           type: 'competition_invite',
-          action_url: `/competitions/join/${competitionId}`,
+          action_url: `${getBaseUrl()}/competitions/join/${competitionId}?email=${encodeURIComponent(users.find(u => u.id === userId)?.email || '')}`,
           read: false
         }]);
 

@@ -8,6 +8,7 @@ import { supabase } from '@/utils/supabase';
 interface InviteToken {
   id: string;
   email: string;
+  token: string;
   created_at: string;
   expires_at: string;
   used_at: string | null;
@@ -170,6 +171,9 @@ export default function AdminInvites() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Status
                     </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -198,6 +202,46 @@ export default function AdminInvites() {
                             Pending
                           </span>
                         )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <div className="flex gap-2">
+                          {!token.used_at && new Date(token.expires_at) >= new Date() && (
+                            <button
+                              onClick={() => {
+                                const url = `${window.location.origin}/signup?token=${token.token}`;
+                                navigator.clipboard.writeText(url);
+                                setSuccess('Invite link copied to clipboard!');
+                                setTimeout(() => setSuccess(''), 3000);
+                              }}
+                              className="text-indigo-600 hover:text-indigo-900"
+                            >
+                              Copy Link
+                            </button>
+                          )}
+                          {!token.used_at && (
+                            <button
+                              onClick={async () => {
+                                if (confirm('Are you sure you want to delete this invite?')) {
+                                  const { error } = await supabase
+                                    .from('signup_tokens')
+                                    .delete()
+                                    .eq('id', token.id);
+                                  
+                                  if (error) {
+                                    setError('Failed to delete invite');
+                                  } else {
+                                    fetchTokens();
+                                    setSuccess('Invite deleted successfully');
+                                    setTimeout(() => setSuccess(''), 3000);
+                                  }
+                                }
+                              }}
+                              className="text-red-600 hover:text-red-900"
+                            >
+                              Delete
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
