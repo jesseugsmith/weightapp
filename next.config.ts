@@ -24,8 +24,8 @@ const nextConfig: NextConfig = {
 
   // Make environment variables available at build time
   env: {
-    VERCEL_URL: process.env.VERCEL_URL,
-    VERCEL_ENV: process.env.VERCEL_ENV,
+    NEXT_PUBLIC_VERCEL_URL: process.env.VERCEL_URL,
+    NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV,
   },
 
   async headers() {
