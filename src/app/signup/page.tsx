@@ -1,16 +1,11 @@
-import { Suspense } from 'react';
-import dynamic from 'next/dynamic';
-import LoadingSpinner from '@/components/LoadingSpinner';
+import { Metadata } from 'next';
+import SignUpWrapper from './SignUpWrapper';
 
-const SignUpForm = dynamic(() => import('./SignUpForm'), {
-  ssr: false,
-});
+export const metadata: Metadata = {
+  title: 'Sign Up - Weight Loss Competition',
+  description: 'Create your account to join weight loss competitions',
+};
 
 export default function SignUpPage() {
-
-  return (
-    <Suspense fallback={<LoadingSpinner message="Loading sign up form..." />}>
-      <SignUpForm />
-    </Suspense>
-  );
+  return <SignUpWrapper />;
 }
