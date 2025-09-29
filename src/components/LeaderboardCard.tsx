@@ -85,46 +85,53 @@ export default function LeaderboardCard({ competitionId, isEnded }: LeaderboardC
   if (error) return <div className="text-red-500">{error}</div>;
 
   return (
-    <div className="bg-white shadow rounded-lg p-6">
-      <h3 className="text-lg font-semibold mb-4">Leaderboard</h3>
+    <div className="bg-opacity-10 backdrop-blur-lg shadow-lg rounded-lg p-6 border border-[var(--accent)] game-glow">
+      <h3 className="text-2xl font-bold text-[var(--accent)] mb-6 game-float">Battle Rankings</h3>
       <div className="space-y-4">
         {leaderboard.map((entry, index) => (
           <div
             key={entry.user_id}
-            className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+            className="flex items-center justify-between p-4 bg-opacity-20 backdrop-blur-md rounded-lg border border-gray-800 hover:border-[var(--accent)] transition-all duration-300"
           >
             <div className="flex items-center space-x-4">
-              <span className={`text-lg font-semibold ${index < 3 ? 'text-yellow-500' : ''}`}>
-                #{index + 1}
+              <span className={`text-xl font-bold ${
+                index === 0 ? 'text-yellow-400' : 
+                index === 1 ? 'text-gray-300' :
+                index === 2 ? 'text-amber-600' :
+                'text-gray-500'
+              } game-float`}>
+                {index === 0 ? '👑' : ''} #{index + 1}
               </span>
               <div>
-                <p className="font-medium">{entry.user_email}</p>
-                <p className="text-sm">
-                  <span className={
+                <p className="font-bold text-[var(--accent)]">{entry.user_email}</p>
+                <p className="text-sm mt-1">
+                  <span className={`font-medium ${
                     entry.starting_weight > entry.current_weight
-                      ? 'text-green-600'
+                      ? 'text-[var(--success)]'
                       : entry.starting_weight < entry.current_weight
-                      ? 'text-red-600'
+                      ? 'text-[var(--error)]'
                       : 'text-gray-500'
-                  }>
+                  }`}>
                     {entry.starting_weight && !isNaN(entry.starting_weight) && 
                      entry.current_weight && !isNaN(entry.current_weight)
                       ? `${Math.abs(entry.starting_weight - entry.current_weight).toFixed(1)} lbs ${
-                        entry.starting_weight > entry.current_weight ? 'lost' : 'gained'
+                        entry.starting_weight > entry.current_weight ? '💪 Progress' : '⚠️ Setback'
                       }`
                       : '0 lbs'}
                   </span>
-                  <span className="ml-2 text-gray-500">
-                    (Current: {entry.current_weight ? `${entry.current_weight.toFixed(1)}lbs` : 'Not logged'})
+                  <span className="ml-2 text-gray-400">
+                    🎯 Current Level: {entry.current_weight ? `${entry.current_weight.toFixed(1)}lbs` : 'Not logged'}
                   </span>
                 </p>
               </div>
             </div>
             {isEnded && entry.prize_amount && (
               <div className="text-right">
-                <p className="text-green-600 font-semibold">${entry.prize_amount}</p>
+                <p className="text-[var(--success)] font-bold text-lg game-float">
+                  🏆 ${entry.prize_amount}
+                </p>
                 {entry.prize_description && (
-                  <p className="text-sm text-gray-500">{entry.prize_description}</p>
+                  <p className="text-sm text-[var(--accent)]">{entry.prize_description}</p>
                 )}
               </div>
             )}
