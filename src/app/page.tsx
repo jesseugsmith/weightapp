@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import FitClashLogo from '@/components/FitClashLogo';
+import { SpeedInsights } from "@vercel/speed-insights/next"
 
 export default function Home() {
   const { user, loading } = useAuth();
@@ -51,6 +52,7 @@ export default function Home() {
           </Link>
         </div>
       </div>
+      <SpeedInsights />
     </div>
   );
 }
