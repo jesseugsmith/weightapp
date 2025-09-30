@@ -77,7 +77,7 @@ export default function SignUpForm() {
 
         if (tokenError) throw tokenError;
         
-        router.push('/dashboard');
+        router.push('/home'); // Redirect to home instead of dashboard
       }
     } catch (error) {
       console.error('Signup error:', error);
