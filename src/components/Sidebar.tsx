@@ -21,7 +21,7 @@ export default function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed
 
   const menuItems = [
     {
-      name: 'Dashboard',
+      name: 'Home',
       path: '/home',
       icon: '🏠',
       description: 'Your home base'

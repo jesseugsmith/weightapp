@@ -24,7 +24,7 @@ export default function AppHeader() {
                 onClick={() => router.push('/home')}
                 className="px-4 py-2 text-sm font-medium text-blue-400 hover:bg-blue-400/20 rounded-md transition-colors duration-300 border border-blue-400/50"
               >
-                Dashboard
+                Home
               </button>
               <button
                 onClick={() => router.push('/competitions')}
