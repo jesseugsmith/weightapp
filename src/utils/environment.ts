@@ -6,10 +6,15 @@ export function getBaseUrl() {
   }
 
   // Vercel deployment URL (handles both production and preview deployments)
-  if (process.env.NEXT_PUBLIC_VERCEL_URL) {
-    // Production domains should use https
-    const protocol = process.env.NEXT_PUBLIC_VERCEL_ENV === 'production' ? 'https' : 'http';
-    return `${protocol}://${process.env.NEXT_PUBLIC_VERCEL_URL}`;
+  // VERCEL_URL is available during build time, so we check both runtime and build-time variables
+  if (process.env.VERCEL_URL) {
+    // Always use https for Vercel deployments
+    return `https://${process.env.VERCEL_URL}`;
+  }
+  
+  // Check for manually set site URL (fallback)
+  if (process.env.NEXT_PUBLIC_SITE_URL) {
+    return process.env.NEXT_PUBLIC_SITE_URL;
   }
   
   // Development fallback
