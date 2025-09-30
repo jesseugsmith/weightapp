@@ -59,7 +59,7 @@ export default function Dashboard() {
           type: 'weight_logged',
           user_id: user?.id || '',
           read: false,
-          action_url: '/dashboard'
+          action_url: '/home'
         });
         throw weightError;
       }
@@ -113,7 +113,7 @@ export default function Dashboard() {
           type: 'competition_ended',
           user_id: user?.id || '',
           read: false,
-          action_url: '/dashboard'
+          action_url: '/home'
         });
         throw competitionsError;
       }
@@ -176,7 +176,7 @@ export default function Dashboard() {
         type: 'weight_logged',
         user_id: user?.id || '',
         read: false,
-        action_url: '/dashboard'
+        action_url: '/home'
       });
     } finally {
       setLoading(false);

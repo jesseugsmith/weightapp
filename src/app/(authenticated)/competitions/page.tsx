@@ -10,9 +10,11 @@ import CreateCompetitionModal from '@/components/CreateCompetitionModal';
 import InviteMembersModal from '@/components/InviteMembersModal';
 import JoinCompetitionsModal from '@/components/JoinCompetitionsModal';
 import LeaderboardCard from '@/components/LeaderboardCard';
+import { usePermissions } from '@/contexts/PermissionContext';
 
 export default function Competitions() {
   const { user } = useAuth();
+  const { can } = usePermissions();
   const router = useRouter();
   const [competitions, setCompetitions] = useState<Competition[]>([]);
   const [myCompetitions, setMyCompetitions] = useState<CompetitionParticipant[]>([]);
@@ -21,6 +23,7 @@ export default function Competitions() {
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
   const [selectedCompetition, setSelectedCompetition] = useState<Competition | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -126,6 +129,39 @@ export default function Competitions() {
     }
   };
 
+  const handleDeleteCompetition = async (competitionId: string) => {
+    if (!user) return;
+
+    try {
+      // First delete all participants
+      const { error: participantsError } = await supabase
+        .from('competition_participants')
+        .delete()
+        .eq('competition_id', competitionId);
+
+      if (participantsError) throw participantsError;
+
+      // Then delete the competition
+      const { error: competitionError } = await supabase
+        .from('competitions')
+        .delete()
+        .eq('id', competitionId);
+
+      if (competitionError) throw competitionError;
+
+      // Refresh the competitions list
+      fetchMyCompetitions();
+      setDeleteConfirmId(null);
+    } catch (error) {
+      console.error('Error deleting competition:', error);
+      alert('Failed to delete competition. Please try again.');
+    }
+  };
+
+  const canDeleteCompetition = (competition: Competition) => {
+    return competition.created_by === user?.id || can('competitions', 'delete');
+  };
+
   if (loading) {
     return <LoadingSpinner message="Loading competitions..." />;
   }
@@ -174,18 +210,35 @@ export default function Competitions() {
                     <h3 className="text-lg font-medium text-gray-900 flex-grow">
                       {participation.competition?.name}
                     </h3>
-                    {participation.competition?.status && (
-                      <span className={`ml-2 px-2 py-1 text-xs font-medium rounded-full ${
-                        participation.competition.status === 'completed' 
-                          ? 'bg-green-100 text-green-800'
-                          : participation.competition.status === 'started'
-                          ? 'bg-blue-100 text-blue-800'
-                          : 'bg-gray-100 text-gray-800'
-                      }`}>
-                        {participation.competition.status.charAt(0).toUpperCase() + 
-                         participation.competition.status.slice(1)}
-                      </span>
-                    )}
+                    <div className="flex items-center space-x-2 ml-2">
+                      {participation.competition?.status && (
+                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                          participation.competition.status === 'completed' 
+                            ? 'bg-green-100 text-green-800'
+                            : participation.competition.status === 'started'
+                            ? 'bg-blue-100 text-blue-800'
+                            : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {participation.competition.status.charAt(0).toUpperCase() + 
+                           participation.competition.status.slice(1)}
+                        </span>
+                      )}
+                      {participation.competition && canDeleteCompetition(participation.competition) && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteConfirmId(participation.competition!.id);
+                          }}
+                          className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                          title="Delete competition"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" 
+                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
                   </div>
                   
                   <p className="text-sm text-gray-500 mb-4 line-clamp-2">
@@ -264,6 +317,42 @@ export default function Competitions() {
         userId={user?.id || ''}
         onJoinCompetition={handleJoinCompetition}
       />
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmId && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="flex items-center mb-4">
+              <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
+                <svg className="h-6 w-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" 
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              </div>
+            </div>
+            <div className="text-center">
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Delete Competition</h3>
+              <p className="text-sm text-gray-500 mb-6">
+                Are you sure you want to delete this competition? This action cannot be undone and will remove all participants and data.
+              </p>
+              <div className="flex justify-center space-x-3">
+                <button
+                  onClick={() => setDeleteConfirmId(null)}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleDeleteCompetition(deleteConfirmId)}
+                  className="px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
