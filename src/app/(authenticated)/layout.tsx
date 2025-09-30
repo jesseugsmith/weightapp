@@ -2,8 +2,9 @@
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
-import AppHeader from '@/components/AppHeader';
+import { useEffect, useState } from 'react';
+import Sidebar from '@/components/Sidebar';
+import TopHeader from '@/components/TopHeader';
 
 export default function AuthenticatedLayout({
   children,
@@ -12,6 +13,8 @@ export default function AuthenticatedLayout({
 }) {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -21,8 +24,8 @@ export default function AuthenticatedLayout({
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-xl">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-900">
+        <div className="text-xl text-white">Loading...</div>
       </div>
     );
   }
@@ -32,9 +35,31 @@ export default function AuthenticatedLayout({
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <AppHeader />
-      {children}
+    <div className="min-h-screen bg-gray-900 flex">
+      {/* Sidebar */}
+      <Sidebar 
+        isOpen={sidebarOpen} 
+        setIsOpen={setSidebarOpen}
+        isCollapsed={sidebarCollapsed}
+        setIsCollapsed={setSidebarCollapsed}
+      />
+      
+      {/* Main content area */}
+      <div className={`flex-1 flex flex-col transition-all duration-300 ${
+        sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'
+      }`}>
+        {/* Top header */}
+        <TopHeader 
+          onMenuClick={() => setSidebarOpen(!sidebarOpen)}
+          onCollapseToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+          isCollapsed={sidebarCollapsed}
+        />
+        
+        {/* Page content */}
+        <main className="flex-1 overflow-auto">
+          {children}
+        </main>
+      </div>
     </div>
   );
 }

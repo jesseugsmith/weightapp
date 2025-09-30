@@ -13,18 +13,38 @@ interface LogWeightModalProps {
 export default function LogWeightModal({ isOpen, onClose, userId, onWeightLogged }: LogWeightModalProps) {
   const [weight, setWeight] = useState('');
   const [notes, setNotes] = useState('');
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
   if (!isOpen) return null;
+
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    setPhoto(file);
+    setPhotoPreview(file ? URL.createObjectURL(file) : null);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      let photoUrl = null;
+
+      if (photo) {
+        const { data, error: uploadError } = await supabase.storage
+          .from('photos')
+          .upload(`weight-photos/${userId}-${Date.now()}`, photo);
+
+        if (uploadError) throw uploadError;
+        photoUrl = data?.path;
+      }
+
       const { error: weightError } = await supabase.from('weight_entries').insert([
         {
           user_id: userId,
           weight: parseFloat(weight), // already in lbs
           date: new Date().toISOString(),
           notes,
+          photo_url: photoUrl,
         },
       ]);
 
@@ -32,6 +52,8 @@ export default function LogWeightModal({ isOpen, onClose, userId, onWeightLogged
 
       setWeight('');
       setNotes('');
+      setPhoto(null);
+      setPhotoPreview(null);
       onWeightLogged();
       onClose();
     } catch (error) {
@@ -76,6 +98,26 @@ export default function LogWeightModal({ isOpen, onClose, userId, onWeightLogged
               className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
               rows={3}
             />
+          </div>
+          <div>
+            <label htmlFor="photo" className="block text-sm font-medium text-gray-700">
+              Photo (optional)
+            </label>
+            <input
+              type="file"
+              id="photo"
+              accept="image/*"
+              capture="environment" // Opens the rear camera on mobile devices
+              onChange={handlePhotoChange}
+              className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border file:border-gray-300 file:text-sm file:font-medium file:bg-gray-50 file:text-gray-700 hover:file:bg-gray-100"
+            />
+            {photoPreview && (
+              <img
+                src={photoPreview}
+                alt="Photo preview"
+                className="mt-2 w-full h-auto rounded-md border border-gray-300"
+              />
+            )}
           </div>
           <div className="flex justify-end space-x-3">
             <button

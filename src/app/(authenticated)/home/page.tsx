@@ -188,11 +188,11 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="p-6">
       <div className="mb-8">
         <div className="flex justify-between items-start">
           <div>
-            <h1 className="text-3xl font-semibold text-gray-900">
+            <h1 className="text-3xl font-semibold text-white">
               {(() => {
                 const hour = new Date().getHours();
                 let greeting = 'Good ';
@@ -206,13 +206,13 @@ export default function Dashboard() {
               <div className="mt-4">
                 <div className="flex flex-col space-y-2">
                   <div className="text-lg">
-                    <p className="text-gray-600">Current weight:</p>
-                    <p className="font-semibold text-gray-900">{latestWeight.toFixed(1)} lbs</p>
+                    <p className="text-gray-400">Current weight:</p>
+                    <p className="font-semibold text-blue-400">{latestWeight.toFixed(1)} lbs</p>
                   </div>
                   {startingWeight && (
                     <div className="text-lg">
-                      <p className="text-gray-600">Weight lost:</p>
-                      <p className={totalWeightLoss && totalWeightLoss > 0 ? "font-semibold text-green-600" : "font-semibold text-gray-900"}>
+                      <p className="text-gray-400">Weight lost:</p>
+                      <p className={totalWeightLoss && totalWeightLoss > 0 ? "font-semibold text-green-400" : "font-semibold text-gray-300"}>
                         {totalWeightLoss ? `${totalWeightLoss.toFixed(1)} lbs` : "0 lbs"}
                         {totalWeightLoss && totalWeightLoss > 0 && " 🎉"}
                       </p>
@@ -224,7 +224,7 @@ export default function Dashboard() {
           </div>
           <button
             onClick={() => setIsModalOpen(true)}
-            className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700"
+            className="px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 transition-all duration-200"
           >
             Log Weight
           </button>
@@ -237,14 +237,14 @@ export default function Dashboard() {
       </div>
 
       {/* Active Competitions */}
-      <div className="bg-white shadow rounded-lg p-6">
-        <h2 className="text-lg font-medium text-gray-900 mb-4">Active Competitions</h2>
+      <div className="bg-gray-800 border border-gray-700 shadow rounded-lg p-6">
+        <h2 className="text-lg font-medium text-white mb-4">Active Competitions</h2>
         {activeCompetitions.length === 0 ? (
           <div className="text-center py-6">
-            <p className="text-gray-500 mb-4">You don&apos;t have any active competitions</p>
+            <p className="text-gray-400 mb-4">You don&apos;t have any active competitions</p>
             <a 
               href="/competitions"
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 transition-all duration-200"
             >
               Browse Competitions
             </a>
@@ -252,25 +252,25 @@ export default function Dashboard() {
         ) : (
           <div className="space-y-6">
             {activeCompetitions.map((comp) => (
-              <div key={comp.id} className="border-b border-gray-200 pb-4 last:border-b-0 last:pb-0">
-                <h3 className="text-md font-medium text-gray-900">{comp.competition?.name}</h3>
-                <p className="text-sm text-gray-500 mb-2">{comp.competition?.description}</p>
+              <div key={comp.id} className="border-b border-gray-700 pb-4 last:border-b-0 last:pb-0">
+                <h3 className="text-md font-medium text-white">{comp.competition?.name}</h3>
+                <p className="text-sm text-gray-400 mb-2">{comp.competition?.description}</p>
                 <div className="grid grid-cols-3 gap-4 mt-2">
                   <div>
                     <p className="text-sm text-gray-500">Starting Weight</p>
-                    <p className="text-lg font-medium">
+                    <p className="text-lg font-medium text-blue-400">
                       {comp.starting_weight ? `${comp.starting_weight.toFixed(1)} lbs` : 'N/A'}
                     </p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-500">Current Weight</p>
-                    <p className="text-lg font-medium">
+                    <p className="text-lg font-medium text-purple-400">
                       {latestWeight ? `${latestWeight.toFixed(1)} lbs` : 'N/A'}
                     </p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-500">Progress</p>
-                    <p className="text-lg font-medium text-green-600">
+                    <p className="text-lg font-medium text-green-400">
                       {comp.weight_loss_percentage 
                         ? `${comp.weight_loss_percentage.toFixed(1)}%`
                         : 'N/A'}

@@ -32,7 +32,7 @@ export default function SignIn() {
     setError('');
     try {
       await signUp('', '', true);
-      // No need to redirect here as it's handled by OAuth
+      router.push('/home'); // Redirect to home after successful Google sign-in
     } catch (error) {
       setError('Failed to sign in with Google');
       setIsProcessing(false);
