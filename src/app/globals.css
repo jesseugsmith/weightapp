@@ -8,6 +8,12 @@
   --accent-glow: rgba(88, 199, 250, 0.5);
   --success: #4ade80;
   --error: #ef4444;
+  
+  /* FitClash Brand Colors */
+  --fitclash-blue: #00D4FF;
+  --fitclash-orange: #FF6B35;
+  --fitclash-purple: #8B5CF6;
+  --fitclash-gradient: linear-gradient(135deg, var(--fitclash-blue), var(--fitclash-purple), var(--fitclash-orange));
 }
 
 body {
