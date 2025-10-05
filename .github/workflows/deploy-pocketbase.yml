@@ -1,0 +1,97 @@
+name: Deploy PocketBase via SSH
+
+on:
+  push:
+    branches: [ primary ]
+
+jobs:
+  deploy:
+    name: Deploy to remote host
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy and run on remote via SSH
+        uses: appleboy/ssh-action@v0.1.8
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          # optional: set SSH_PORT secret to override default 22
+          port: ${{ secrets.SSH_PORT }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          # If your server requires known_hosts verification, set KNOWN_HOSTS in secrets and uncomment below
+          # known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+          script: |
+            set -euo pipefail
+
+            # Remote application directory (set as a secret REMOTE_APP_DIR), fallback to /home/${{ secrets.SSH_USER }}/weightapp
+            REMOTE_DIR="${{ secrets.REMOTE_APP_DIR }}"
+            if [ -z "$REMOTE_DIR" ]; then
+              REMOTE_DIR="/home/${{ secrets.SSH_USER }}/weightapp"
+            fi
+
+            echo "Using remote directory: $REMOTE_DIR"
+
+            # Ensure git is present and clone or update the repo
+            if [ ! -d "$REMOTE_DIR/.git" ]; then
+              echo "Cloning repository into $REMOTE_DIR"
+              git clone https://github.com/${{ github.repository }} "$REMOTE_DIR"
+            fi
+
+            cd "$REMOTE_DIR"
+            echo "Fetching latest code and resetting to the pushed commit"
+            git fetch --all --prune
+            git reset --hard ${{ github.sha }}
+
+            # Go to the pocketbase docker folder and bring up services
+            if [ -d "pocketbase/docker" ]; then
+              cd pocketbase/docker
+            else
+              echo "Cannot find pocketbase/docker directory" >&2
+              exit 2
+            fi
+
+            echo "Stopping any existing compose services (if present)"
+            docker compose down || true
+
+            echo "Pulling images (if any) and starting services"
+            docker compose pull || true
+            docker compose up -d --build
+
+            # Wait for PocketBase to be reachable on localhost:8090 (adjust PORT if you expose a different port)
+            HOST=127.0.0.1
+            PORT=8090
+            TIMEOUT=120
+            ELAPSED=0
+            echo "Waiting for PocketBase to be available on http://$HOST:$PORT"
+            until curl -sS "http://$HOST:$PORT/" >/dev/null 2>&1; do
+              if [ $ELAPSED -ge $TIMEOUT ]; then
+                echo "Timed out waiting for PocketBase after ${TIMEOUT}s" >&2
+                exit 3
+              fi
+              sleep 2
+              ELAPSED=$((ELAPSED + 2))
+              echo "  waited ${ELAPSED}s..."
+            done
+
+            echo "PocketBase is up — running seeding script"
+
+            # Run seeding script on the remote host so it can reach localhost:8090
+            if [ -d "$REMOTE_DIR/pocketbase/init/seeding" ]; then
+              cd "$REMOTE_DIR/pocketbase/init/seeding"
+              # Install production dependencies (node must be available on the remote host)
+              if command -v npm >/dev/null 2>&1; then
+                npm ci --production || npm install --production
+                node seed_roles.js
+              else
+                echo "npm is not installed on remote host — cannot run seeding script" >&2
+                exit 4
+              fi
+            else
+              echo "Seeding folder not found at $REMOTE_DIR/pocketbase/init/seeding" >&2
+              exit 5
+            fi
+
+            echo "Deployment and seeding complete"

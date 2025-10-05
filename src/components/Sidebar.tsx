@@ -2,7 +2,7 @@
 
 import { useRouter, usePathname } from 'next/navigation';
 import FitClashLogo from './FitClashLogo';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
 import { usePermissions } from '@/contexts/PermissionContext';
 import { pb } from '@/lib/pocketbase';

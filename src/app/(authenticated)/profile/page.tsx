@@ -2,12 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuth } from '@/hooks/useAuth';
 import { pb } from '@/lib/pocketbase';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import ProfilePhotoUpload from '@/components/ProfilePhotoUpload';
-
-import type { Profile as DBProfile } from '../../../types/database.types';
 
 // Helper function to format date for HTML date input
 function formatDateForInput(dateString: string): string {

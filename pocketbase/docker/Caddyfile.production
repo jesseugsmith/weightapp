@@ -1,0 +1,79 @@
+# Production Caddyfile with automatic HTTPS
+# Replace 'your-domain.com' with your actual domain
+
+your-domain.com {
+    # Automatic HTTPS with Let's Encrypt
+    # Caddy handles everything automatically!
+
+    # Reverse proxy to PocketBase
+    reverse_proxy pocketbase:8090 {
+        # Health checks
+        health_uri /api/health
+        health_interval 30s
+        health_timeout 10s
+    }
+
+    # Security headers (automatic + custom)
+    header {
+        X-Frame-Options DENY
+        X-Content-Type-Options nosniff
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy strict-origin-when-cross-origin
+        -Server
+    }
+
+    # CORS for API
+    @cors_preflight {
+        method OPTIONS
+        path /api/*
+    }
+    handle @cors_preflight {
+        header Access-Control-Allow-Origin "{http.request.header.Origin}"
+        header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+        header Access-Control-Allow-Headers "Authorization, Content-Type, Accept, Origin, User-Agent, DNT, Cache-Control, X-Mx-ReqToken, X-Requested-With"
+        header Access-Control-Allow-Credentials "true"
+        respond 204
+    }
+
+    @api_requests path /api/*
+    header @api_requests {
+        Access-Control-Allow-Origin "{http.request.header.Origin}"
+        Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+        Access-Control-Allow-Headers "Authorization, Content-Type, Accept, Origin, User-Agent, DNT, Cache-Control, X-Mx-ReqToken, X-Requested-With"
+        Access-Control-Allow-Credentials "true"
+    }
+
+    # Optional: Restrict admin UI to Tailscale
+    @admin path /_/*
+    handle @admin {
+        # Uncomment to restrict to Tailscale network
+        # @tailscale remote_ip 100.64.0.0/10
+        # handle @tailscale {
+        #     reverse_proxy pocketbase:8090
+        # }
+        # respond "Access denied - Use Tailscale" 403
+        
+        # For now, allow all (change this in production!)
+        reverse_proxy pocketbase:8090
+    }
+
+    # Logging
+    log {
+        output file /var/log/caddy/access.log {
+            roll_size 100mb
+            roll_keep 5
+            roll_keep_for 720h
+        }
+        format json
+    }
+
+    # File upload size (100MB)
+    request_body {
+        max_size 100MB
+    }
+}
+
+# Optional: www redirect
+www.your-domain.com {
+    redir https://your-domain.com{uri} permanent
+}

@@ -1,0 +1,44 @@
+{{ caddy_domain }} {
+    reverse_proxy pocketbase:8090 {
+        health_uri /api/health
+        health_interval 30s
+        health_timeout 10s
+    }
+
+    header {
+        X-Frame-Options DENY
+        X-Content-Type-Options nosniff
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy strict-origin-when-cross-origin
+        -Server
+    }
+
+    @cors_preflight {
+        method OPTIONS
+        path /api/*
+    }
+    handle @cors_preflight {
+        header Access-Control-Allow-Origin "{http.request.header.Origin}"
+        header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+        header Access-Control-Allow-Headers "Authorization, Content-Type, Accept, Origin, User-Agent, DNT, Cache-Control, X-Mx-ReqToken, X-Requested-With"
+        header Access-Control-Allow-Credentials "true"
+        respond 204
+    }
+
+    @api_requests path /api/*
+    header @api_requests {
+        Access-Control-Allow-Origin "{http.request.header.Origin}"
+        Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+        Access-Control-Allow-Headers "Authorization, Content-Type, Accept, Origin, User-Agent, DNT, Cache-Control, X-Mx-ReqToken, X-Requested-With"
+        Access-Control-Allow-Credentials "true"
+    }
+
+    log {
+        output file /var/log/caddy/access.log
+        format json
+    }
+
+    request_body {
+        max_size 100MB
+    }
+}
