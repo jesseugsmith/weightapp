@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 
 import LoadingSpinner from '@/components/LoadingSpinner';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuth } from '@/hooks/useauth';
 
 interface AuditLog {
   id: string;
