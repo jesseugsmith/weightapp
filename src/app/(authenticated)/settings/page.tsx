@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/hooks/useauth';
+import { useAuth } from '@/hooks/useAuth';
 import { pb } from '@/lib/pocketbase';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import ProfilePhotoUpload from '@/components/ProfilePhotoUpload';

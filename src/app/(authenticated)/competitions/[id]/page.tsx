@@ -6,7 +6,7 @@ import { pb } from '@/lib/pocketbase';
 import { Competition, Prize } from '@/types/database.types';
 import { isAdmin as checkIsAdmin } from '@/utils/permissions';
 import LoadingSpinner from '@/components/LoadingSpinner';
-import { useAuth } from '@/hooks/useauth';
+import { useAuth } from '@/hooks/useAuth';
 import LeaderboardCard from '@/components/LeaderboardCard';
 import { competitionService} from '@/utils/dataService';
 
