@@ -1,7 +1,3 @@
-/**
- * Service for managing competition standings
- */
-
 import { pb } from '@/lib/pocketbase';
 import type {Competition, CompetitionParticipant } from '@/types/database.types';
 
@@ -146,7 +142,7 @@ export const standingsService = {
   /**
    * Get user's rank in a specific competition
    */
-  async getUserRank(competitionId: string, userId: string): Promise<number | null> {
+  async getUserRank(competitionId: string, userId: string): Promise<number | undefined> {
     try {
       const standing = await pb.collection('competition_participants').getFirstListItem<CompetitionParticipant>(
         `competition_id = "${competitionId}" && user_id = "${userId}" && is_active = true`
@@ -166,7 +162,7 @@ export const standingsService = {
         console.error('Error fetching user rank from participants:', participantError);
       }
       
-      return null;
+      return undefined;
     }
   }
 };

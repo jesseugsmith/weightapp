@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { pb } from '@/lib/pocketbase';
 
 import LoadingSpinner from '@/components/LoadingSpinner';
 
@@ -33,59 +34,48 @@ export default function JoinCompetitionClient({ id }: JoinCompetitionClientProps
 
       try {
         // Verify the invite exists and is valid
-        const { data: invite, error: inviteError } = await supabase
-          .from('competition_invites')
-          .select('*')
-          .eq('competition_id', id)
-          .eq('email', email.toLowerCase())
-          .eq('status', 'pending')
-          .single();
+        const invite = await pb.collection('competition_invites').getFirstListItem(
+          `competition_id = "${id}" && email = "${email.toLowerCase()}" && status = "pending"`
+        ).catch(() => null);
 
-        if (inviteError || !invite) {
+        if (!invite) {
           setError('Invalid or expired invite');
           setLoading(false);
           return;
         }
 
         // Get the user's current weight to use as starting weight
-        const { data: weightData, error: weightError } = await supabase
-          .from('weight_entries')
-          .select('weight')
-          .eq('user_id', user.id)
-          .order('date', { ascending: false })
-          .limit(1);
+        const weightEntries = await pb.collection('weight_entries').getFullList({
+          filter: `user_id = "${user.id}"`,
+          sort: '-date',
+          limit: 1
+        });
 
-        if (weightError) throw weightError;
-        
-        const startingWeight = weightData?.[0]?.weight;
+        const startingWeight = weightEntries?.[0]?.weight;
 
-        // Join the competition
-        const { error: joinError } = await supabase
-          .from('competition_participants')
-          .insert([
-            {
-              competition_id: id,
-              user_id: user.id,
-              starting_weight: startingWeight,
-              current_weight: startingWeight
-            },
-          ]);
+        // Check if user already in competition
+        const existing = await pb.collection('competition_participants').getFirstListItem(
+          `competition_id = "${id}" && user_id = "${user.id}"`
+        ).catch(() => null);
 
-        if (joinError) {
-          if (joinError.code === '23505') {
-            setError('You are already a member of this competition');
-          } else {
-            setError('Failed to join competition');
-          }
+        if (existing) {
+          setError('You are already a member of this competition');
           setLoading(false);
           return;
         }
 
+        // Join the competition
+        await pb.collection('competition_participants').create({
+          competition_id: id,
+          user_id: user.id,
+          starting_weight: startingWeight,
+          current_weight: startingWeight,
+          joined_at: new Date().toISOString(),
+          is_active: true
+        });
+
         // Update invite status
-        await supabase
-          .from('competition_invites')
-          .update({ status: 'accepted' })
-          .eq('id', invite.id);
+        await pb.collection('competition_invites').update(invite.id, { status: 'accepted' });
 
         // Redirect to competitions page
         router.push('/competitions');
