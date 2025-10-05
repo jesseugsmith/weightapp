@@ -1,38 +1,40 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuth } from '@/hooks/useAuth';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { supabase } from '@/utils/supabase';
+import { pb } from '@/lib/pocketbase';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import Link from 'next/link';
 
 export default function SignUpForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [isValidToken, setIsValidToken] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
-  const { signUp } = useAuth();
+  const { signUp, signInWithOAuth } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get('token');
 
   useEffect(() => {
     if (!token) {
+      setIsValidToken(true); // Allow open registration for now
       setIsLoading(false);
       return;
     }
 
     const validateToken = async () => {
       try {
-        const { data, error: rpcError } = await supabase.rpc(
-          'check_signup_token',
-          { token_param: token }
+        // Check if token exists in competition_invite_codes or similar
+        const inviteCode = await pb.collection('competition_invite_codes').getFirstListItem(
+          `code = "${token}"`
         );
-
-        if (rpcError) throw rpcError;
-        setIsValidToken(!!data);
+        setIsValidToken(!!inviteCode);
       } catch (error) {
         console.error('Token validation error:', error);
         setError('Invalid or expired signup link');
@@ -41,12 +43,19 @@ export default function SignUpForm() {
     };
 
     validateToken();
-  }, [token, email]);
+  }, [token]);
 
   const handleGoogleSignUp = async () => {
     try {
       setIsProcessing(true);
-      await signUp('', '', true);
+      setError('');
+      const result = await signInWithOAuth('google');
+      if (result.error) {
+        setError(result.error);
+      } else {
+        // TODO: Record token usage if applicable
+        router.push('/home');
+      }
     } catch (error) {
       console.error('Google signup error:', error);
       setError('Failed to sign up with Google. Please try again.');
@@ -58,26 +67,27 @@ export default function SignUpForm() {
   const handleEmailSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!token || !isValidToken) {
+    if (token && !isValidToken) {
       setError('Invalid signup link');
       return;
     }
 
     try {
       setIsProcessing(true);
-      const { data: signUpData, error: signUpError } = await signUp(email, password);
-      if (signUpError) throw signUpError;
-
-      if (signUpData?.user) {
-        // Record token usage
-        const { error: tokenError } = await supabase.rpc(
-          'record_token_usage',
-          { token_param: token, user_id_param: signUpData.user.id }
-        );
-
-        if (tokenError) throw tokenError;
-        
-        router.push('/home'); // Redirect to home instead of dashboard
+      setError('');
+      setSuccess('');
+      
+      const result = await signUp(email, password, name);
+      
+      if (result.error) {
+        setError(result.error);
+      } else {
+        setSuccess('Account created successfully! Please check your email to verify your account.');
+        // TODO: Record token usage if applicable
+        // For now, redirect to sign in
+        setTimeout(() => {
+          router.push('/signin');
+        }, 2000);
       }
     } catch (error) {
       console.error('Signup error:', error);
@@ -87,23 +97,11 @@ export default function SignUpForm() {
     }
   };
 
-  if (!token) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-md w-full">
-          <div className="text-center text-red-600">
-            Please use the signup link provided in your invitation.
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen flex items-center justify-center bg-dark-primary py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
         <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+          <h2 className="mt-6 text-center text-3xl font-extrabold text-dark-primary">
             Create your account
           </h2>
         </div>
@@ -111,6 +109,12 @@ export default function SignUpForm() {
         {error && (
           <div className="rounded-md bg-red-50 p-4">
             <div className="text-sm text-red-700">{error}</div>
+          </div>
+        )}
+
+        {success && (
+          <div className="rounded-md bg-green-50 p-4">
+            <div className="text-sm text-green-700">{success}</div>
           </div>
         )}
 
@@ -124,11 +128,11 @@ export default function SignUpForm() {
               <button
                 type="button"
                 onClick={handleGoogleSignUp}
-                disabled={isProcessing || !isValidToken}
-                className={`group relative w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md text-sm font-medium ${
-                  isProcessing || !isValidToken
-                    ? 'bg-gray-100 text-gray-500 cursor-not-allowed'
-                    : 'text-gray-700 bg-white hover:bg-gray-50'
+                disabled={isProcessing}
+                className={`group relative w-full flex justify-center py-2 px-4 border border-gray-700 rounded-md text-sm font-medium ${
+                  isProcessing
+                    ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                    : 'text-dark-primary bg-dark-secondary hover:bg-dark-hover'
                 } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500`}
               >
                 <span className="absolute left-0 inset-y-0 flex items-center pl-3">
@@ -151,7 +155,7 @@ export default function SignUpForm() {
                     />
                   </svg>
                 </span>
-                Continue with Google
+                {isProcessing ? 'Signing up...' : 'Continue with Google'}
               </button>
             </div>
 
@@ -160,12 +164,26 @@ export default function SignUpForm() {
                 <div className="w-full border-t border-gray-300"></div>
               </div>
               <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-gray-500">Or continue with email</span>
+                <span className="px-2 bg-dark-primary text-gray-400">Or continue with email</span>
               </div>
             </div>
 
             <form onSubmit={handleEmailSignUp}>
               <div className="rounded-md shadow-sm -space-y-px">
+                <div>
+                  <input
+                    id="name"
+                    name="name"
+                    type="text"
+                    autoComplete="name"
+                    required
+                    disabled={isProcessing}
+                    className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-700 bg-dark-secondary placeholder-gray-400 text-dark-primary rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                    placeholder="Full name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </div>
                 <div>
                   <input
                     id="email-address"
@@ -174,7 +192,7 @@ export default function SignUpForm() {
                     autoComplete="email"
                     required
                     disabled={isProcessing}
-                    className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                    className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-700 bg-dark-secondary placeholder-gray-400 text-dark-primary focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
                     placeholder="Email address"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -188,10 +206,11 @@ export default function SignUpForm() {
                     autoComplete="new-password"
                     required
                     disabled={isProcessing}
-                    className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                    placeholder="Password"
+                    className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-700 bg-dark-secondary placeholder-gray-400 text-dark-primary rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                    placeholder="Password (min 8 characters)"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    minLength={8}
                   />
                 </div>
               </div>
@@ -199,17 +218,23 @@ export default function SignUpForm() {
               <div className="mt-6">
                 <button
                   type="submit"
-                  disabled={isProcessing || !isValidToken}
+                  disabled={isProcessing}
                   className={`group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white 
-                    ${isProcessing || !isValidToken
+                    ${isProcessing
                       ? 'bg-indigo-400 cursor-not-allowed'
                       : 'bg-indigo-600 hover:bg-indigo-700'
                     } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500`}
                 >
-                  {isProcessing ? 'Signing up...' : 'Sign up with email'}
+                  {isProcessing ? 'Creating account...' : 'Sign up with email'}
                 </button>
               </div>
             </form>
+
+            <div className="text-center">
+              <Link href="/signin" className="text-indigo-500 hover:text-indigo-400">
+                Already have an account? Sign in
+              </Link>
+            </div>
           </div>
         )}
       </div>

@@ -2,49 +2,44 @@
 
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
-import { supabase } from '@/utils/supabase';
+import { pb } from '@/lib/pocketbase';
 import { Competition, Prize } from '@/types/database.types';
+import { isAdmin as checkIsAdmin } from '@/utils/permissions';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { useAuth } from '@/contexts/AuthContext';
 import LeaderboardCard from '@/components/LeaderboardCard';
+import { competitionService} from '@/utils/dataService';
 
 export default function CompetitionDetails() {
   const params = useParams();
+  const { user } = useAuth();
   const [competition, setCompetition] = useState<Competition | null>(null);
   const [prizes, setPrizes] = useState<Prize[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [sending, setSending] = useState(false);
+  const [startingCompetition, setStartingCompetition] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     async function checkAdminStatus() {
-      const { data: adminStatus } = await supabase.rpc('is_admin');
-      setIsAdmin(!!adminStatus);
+      const adminStatus = await checkIsAdmin();
+      setIsAdmin(adminStatus);
     }
 
     async function fetchCompetitionDetails() {
       try {
         // Fetch competition details
-        const { data: competitionData, error: competitionError } = await supabase
-          .from('competitions')
-          .select('*')
-          .eq('id', params.id)
-          .single();
-
-        if (competitionError) throw competitionError;
-        setCompetition(competitionData);
+        const competitionData = await pb.collection('competitions').getOne(params.id as string);
+        setCompetition(competitionData as Competition);
 
         // Fetch prizes for this competition
-        const { data: prizesData, error: prizesError } = await supabase
-          .from('prizes')
-          .select('*')
-          .eq('competition_id', params.id)
-          .order('rank', { ascending: true });
-
-        if (prizesError) throw prizesError;
-        setPrizes(prizesData || []);
+        const prizesData = await pb.collection('prizes').getFullList({
+          filter: `competition_id = "${params.id}"`,
+          sort: 'rank'
+        });
+        setPrizes(prizesData as Prize[]);
 
       } catch (err) {
         console.error('Error fetching competition details:', err);
@@ -60,6 +55,30 @@ export default function CompetitionDetails() {
     }
   }, [params.id]);
 
+  const handleStartCompetition = async () => {
+    if (!competition || !user) return;
+    
+    setStartingCompetition(true);
+    setError(null);
+    setSuccess(null);
+    
+    try {
+      // Update competition status to 'started'
+      const comp = await competitionService.startCompetition(competition.id);
+      if (!comp) {
+        throw new Error('Failed to start competition');
+      }
+      //setCompetition(updatedCompetition as Competition);
+      setSuccess('Competition started successfully! Participants can now begin logging their progress.');
+      
+    } catch (err) {
+      console.error('Error starting competition:', err);
+      setError(err instanceof Error ? err.message : 'Failed to start competition');
+    } finally {
+      setStartingCompetition(false);
+    }
+  };
+
   const handleSendDetails = async () => {
     if (!competition) return;
     
@@ -68,27 +87,21 @@ export default function CompetitionDetails() {
     setSuccess(null);
     
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      // Note: This functionality would need to be reimplemented with PocketBase
+      // Since PocketBase doesn't have edge functions like Supabase, you would need to:
+      // 1. Create a separate API endpoint in your Next.js app
+      // 2. Or use a service like Resend/SendGrid directly from the client
+      // 3. Or implement this server-side functionality differently
       
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-competition-details`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session?.access_token}`,
-          },
-          body: JSON.stringify({ competition_id: competition.id }),
-        }
-      );
-
-      const result = await response.json();
+      setError('Competition email functionality not yet implemented with PocketBase');
       
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to send competition details');
-      }
-
-      setSuccess('Competition details sent successfully to all participants!');
+      // Placeholder for future implementation:
+      // const response = await fetch('/api/send-competition-details', {
+      //   method: 'POST',
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify({ competition_id: competition.id }),
+      // });
+      
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send competition details');
     } finally {
@@ -117,17 +130,48 @@ export default function CompetitionDetails() {
             </div>
           </div>
 
-          {isAdmin && (
-            <div>
-              <button
-                onClick={handleSendDetails}
-                disabled={sending}
-                className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white 
-                  ${sending ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}
-                  focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500`}
-              >
-                {sending ? 'Sending...' : 'Send Competition Update'}
-              </button>
+          {(isAdmin || (user && competition.created_by === user.id)) && (
+            <div className="flex space-x-3">
+              {/* Start Competition Button - only show if user is owner and competition is draft */}
+              {user && competition.created_by === user.id && competition.status === 'draft' && (
+                <button
+                  onClick={handleStartCompetition}
+                  disabled={startingCompetition}
+                  className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white 
+                    ${startingCompetition ? 'bg-green-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}
+                    focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500`}
+                >
+                  {startingCompetition ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Starting...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h1m4 0h1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Start Competition
+                    </>
+                  )}
+                </button>
+              )}
+              
+              {/* Send Details Button - only show for admins */}
+              {isAdmin && (
+                <button
+                  onClick={handleSendDetails}
+                  disabled={sending}
+                  className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white 
+                    ${sending ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}
+                    focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500`}
+                >
+                  {sending ? 'Sending...' : 'Send Competition Update'}
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -169,9 +213,11 @@ export default function CompetitionDetails() {
                   {prize.rank === 1 ? '🥇' : prize.rank === 2 ? '🥈' : prize.rank === 3 ? '🥉' : `#${prize.rank}`}
                   {' '}Place
                 </div>
-                <div className="text-2xl font-bold text-green-600 mb-2">${prize.prize_amount}</div>
-                {prize.prize_description && (
-                  <p className="text-sm text-gray-500">{prize.prize_description}</p>
+                <div className="text-2xl font-bold text-green-600 mb-2">
+                  {prize.value ? `$${prize.value}` : 'Prize TBD'}
+                </div>
+                {prize.description && (
+                  <p className="text-sm text-gray-500">{prize.description}</p>
                 )}
               </div>
             ))}

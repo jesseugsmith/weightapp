@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/utils/supabase';
+import { pb } from '@/lib/pocketbase';
 import { Profile } from '@/types/database.types';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { getBaseUrl } from '@/utils/environment';
@@ -38,59 +38,39 @@ export default function InviteMembersModal({
       setError(null);
 
       // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = pb.authStore.model;
       if (!user) {
         setError('Not authenticated');
         return;
       }
 
       // First, get existing participants
-      const { data: participants, error: participantsError } = await supabase
-        .from('competition_participants')
-        .select('user_id')
-        .eq('competition_id', competitionId);
+      const participants = await pb.collection('competition_participants').getFullList({
+        filter: `competition_id = "${competitionId}"`
+      });
 
-      if (participantsError) {
-        console.error('Participants query error:', participantsError);
-        throw new Error(`Failed to fetch participants: ${participantsError.message}`);
-      }
-
-      // Then, get pending invites
-      const { data: pendingInvites, error: invitesError } = await supabase
-        .from('competition_invites')
-        .select('user_id')
-        .eq('competition_id', competitionId)
-        .eq('status', 'pending');
-
-      if (invitesError) {
-        console.error('Invites query error:', invitesError);
-        throw new Error(`Failed to fetch invites: ${invitesError.message}`);
+      // Then, get pending invites (if you have this collection)
+      let pendingInvites: any[] = [];
+      try {
+        pendingInvites = await pb.collection('competition_invites').getFullList({
+          filter: `competition_id = "${competitionId}" && status = "pending"`
+        });
+      } catch (error) {
+        // Ignore if collection doesn't exist
+        console.log('Competition invites collection not available');
       }
 
       // Create arrays of IDs to exclude
-      const participantIds = participants?.map(p => p.user_id) || [];
-      const inviteeIds = pendingInvites?.map(i => i.user_id) || [];
-      const excludeIds = [...participantIds, ...inviteeIds];
+      const participantIds = participants?.map((p: any) => p.user_id) || [];
+      const inviteeIds = pendingInvites?.map((i: any) => i.user_id) || [];
+      const excludeIds = [...participantIds, ...inviteeIds, user.id];
 
-      // Get all users except those in the exclude list
-      const { data: users, error: usersError } = await supabase
-        .from('profiles')
-        .select('*')
-        .not('id', 'in', excludeIds);
+      // Get all profiles
+      const allProfiles = await pb.collection('profiles').getFullList();
 
-      if (usersError) {
-        console.error('Users query error:', usersError);
-        throw new Error(`Failed to fetch users: ${usersError.message}`);
-      }
-
-      // Check if users data is null
-      if (!users) {
-        throw new Error('No users data returned from the query');
-      }
-
-      // Filter out the current user
-      const filteredUsers = users.filter(u => u.id !== user.id);
-      setUsers(filteredUsers);
+      // Filter out excluded users
+      const filteredUsers = allProfiles.filter((u: any) => !excludeIds.includes(u.user_id));
+      setUsers(filteredUsers as Profile[]);
     } catch (error) {
       console.error('Error fetching users:', error);
       setError(error instanceof Error ? error.message : 'Failed to load available users');
@@ -106,45 +86,45 @@ export default function InviteMembersModal({
       setInvitingUsers(prev => new Set(prev).add(userId));
 
       // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = pb.authStore.model;
       if (!user) {
         setError('Not authenticated');
         return;
       }
 
-      // Create the invite
-      const { error: inviteError } = await supabase
-        .from('competition_invites')
-        .insert([{
-          competition_id: competitionId,
-          email: users.find(u => u.id === userId)?.email,
-          status: 'pending',
-          invited_by: user.id,
-          user_id: userId
-        }]);
-
-      if (inviteError) {
-        if (inviteError.code === '23505') {
-          setError('User has already been invited');
-        } else {
-          throw inviteError;
-        }
+      const invitedUser = users.find(u => u.id === userId);
+      if (!invitedUser) {
+        setError('User not found');
         return;
       }
 
-      // Create notification
-      const { error: notifError } = await supabase
-        .from('notifications')
-        .insert([{
-          user_id: userId,
-          title: 'Competition Invite',
-          message: `You've been invited to join "${competitionName}"!`,
-          type: 'competition_invite',
-          action_url: `${getBaseUrl()}/competitions/join/${competitionId}?email=${encodeURIComponent(users.find(u => u.id === userId)?.email || '')}`,
-          read: false
-        }]);
+      // Create the invite (if you have this collection)
+      try {
+        await pb.collection('competition_invites').create({
+          competition_id: competitionId,
+          email: invitedUser.email,
+          status: 'pending',
+          invited_by: user.id,
+          user_id: userId
+        });
+      } catch (error: any) {
+        if (error.status === 400) {
+          setError('User has already been invited');
+          return;
+        }
+        // If collection doesn't exist, continue without creating invite
+        console.log('Competition invites collection not available, skipping invite creation');
+      }
 
-      if (notifError) throw notifError;
+      // Create notification
+      await pb.collection('notifications').create({
+        user_id: userId,
+        title: 'Competition Invite',
+        message: `You've been invited to join "${competitionName}"!`,
+        type: 'info',
+        action_url: `${getBaseUrl()}/competitions/join/${competitionId}?email=${encodeURIComponent(invitedUser.email || '')}`,
+        is_read: false
+      });
 
       // Remove the invited user from the list
       setUsers(prev => prev.filter(u => u.id !== userId));

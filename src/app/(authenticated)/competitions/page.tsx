@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
+import { pb } from '@/lib/pocketbase';
+import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/utils/supabase';
-import { Competition, CompetitionParticipant } from '@/types/database.types';
+import { competitionService } from '@/utils/dataService';
+
+import { Competition, CompetitionParticipant } from '../../../types/database.types';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import CreateCompetitionModal from '@/components/CreateCompetitionModal';
 import InviteMembersModal from '@/components/InviteMembersModal';
@@ -34,15 +36,12 @@ export default function Competitions() {
 
   const fetchCompetitions = async () => {
     try {
-      const { data, error } = await supabase
-        .from('competitions')
-        .select('*')
-        .eq('status', 'started')
-        .gte('end_date', new Date().toISOString())
-        .order('start_date', { ascending: true });
-
-      if (error) throw error;
-      setCompetitions(data || []);
+      const result = await pb.collection('competitions').getFullList({
+        filter: `status = "active" && end_date >= "${new Date().toISOString()}"`,
+        sort: 'start_date',
+        expand: 'created_by'
+      });
+      setCompetitions(result as Competition[]);
     } catch (error) {
       console.error('Error fetching competitions:', error);
     }
@@ -50,41 +49,29 @@ export default function Competitions() {
 
   const fetchMyCompetitions = async () => {
     try {
-      const { data, error } = await supabase
-        .from('competition_participants')
-        .select(`
-          *,
-          competition:competitions(
-            id,
-            name,
-            description,
-            start_date,
-            end_date,
-            status,
-            competition_participants(user_id)
-          )
-        `)
-        .eq('user_id', user?.id);
-
-      if (error) throw error;
+      const result = await pb.collection('competition_participants').getFullList({
+        filter: `user_id = "${user?.id}"`,
+        expand: 'competition_id',
+        sort: '-joined_at'
+      });
       
       // Filter out null competitions and sort by status
       const statusOrder: Record<string, number> = {
-        'started': 0,
-        'draft': 1,
+        'active': 0,
+        'upcoming': 1,
         'completed': 2
       };
 
-      const sortedCompetitions = (data || [])
-        .filter(item => item.competition)
-        .sort((a, b) => {
-          // Custom sort order: started -> draft -> completed
-          const statusA = a.competition?.status || 'completed';
-          const statusB = b.competition?.status || 'completed';
+      const sortedCompetitions = result
+        .filter((item: any) => item.expand?.competition_id)
+        .sort((a: any, b: any) => {
+          // Custom sort order: active -> upcoming -> completed
+          const statusA = a.expand?.competition_id?.status || 'completed';
+          const statusB = b.expand?.competition_id?.status || 'completed';
           return (statusOrder[statusA] || 999) - (statusOrder[statusB] || 999);
         });
 
-      setMyCompetitions(sortedCompetitions);
+      setMyCompetitions(sortedCompetitions as CompetitionParticipant[]);
     } catch (error) {
       console.error('Error fetching my competitions:', error);
     } finally {
@@ -98,30 +85,22 @@ export default function Competitions() {
 
     try {
       // First get the user's current weight
-      const { data: weightData, error: weightError } = await supabase
-        .from('weight_entries')
-        .select('weight')
-        .eq('user_id', user.id)
-        .order('date', { ascending: false })
-        .limit(1);
-
-      if (weightError) throw weightError;
+      const weightRecords = await pb.collection('weight_entries').getFullList({
+        filter: `user_id = "${user.id}"`,
+        sort: '-date',
+        limit: 1
+      });
       
-      const startingWeight = weightData?.[0]?.weight;
+      const startingWeight = weightRecords?.[0]?.weight;
       
       // Insert the participant with their starting weight
-      const { error } = await supabase
-        .from('competition_participants')
-        .insert([
-          {
-            competition_id: competitionId,
-            user_id: user.id,
-            starting_weight: startingWeight,
-            current_weight: startingWeight
-          },
-        ]);
-
-      if (error) throw error;
+      await pb.collection('competition_participants').create({
+        competition_id: competitionId,
+        user_id: user.id,
+        start_weight: startingWeight,
+        current_weight: startingWeight,
+        joined_at: new Date().toISOString()
+      });
 
       fetchMyCompetitions();
     } catch (error) {
@@ -134,20 +113,16 @@ export default function Competitions() {
 
     try {
       // First delete all participants
-      const { error: participantsError } = await supabase
-        .from('competition_participants')
-        .delete()
-        .eq('competition_id', competitionId);
-
-      if (participantsError) throw participantsError;
+      const participants = await pb.collection('competition_participants').getFullList({
+        filter: `competition_id = "${competitionId}"`
+      });
+      
+      for (const participant of participants) {
+        await pb.collection('competition_participants').delete(participant.id);
+      }
 
       // Then delete the competition
-      const { error: competitionError } = await supabase
-        .from('competitions')
-        .delete()
-        .eq('id', competitionId);
-
-      if (competitionError) throw competitionError;
+      await pb.collection('competitions').delete(competitionId);
 
       // Refresh the competitions list
       fetchMyCompetitions();
@@ -160,6 +135,30 @@ export default function Competitions() {
 
   const canDeleteCompetition = (competition: Competition) => {
     return competition.created_by === user?.id || can('competitions', 'delete');
+  };
+
+  const calculateDaysLeft = (endDate: string) => {
+    const end = new Date(endDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    end.setHours(0, 0, 0, 0);
+    
+    const diffTime = end.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    return diffDays;
+  };
+
+  const formatDaysLeft = (days: number) => {
+    if (days < 0) {
+      return 'Ended';
+    } else if (days === 0) {
+      return 'Ends today';
+    } else if (days === 1) {
+      return '1 day left';
+    } else {
+      return `${days} days left`;
+    }
   };
 
   if (loading) {
@@ -203,31 +202,31 @@ export default function Competitions() {
               <div
                 key={participation.id}
                 className="bg-white rounded-lg shadow overflow-hidden hover:shadow-lg transition-shadow duration-200 cursor-pointer"
-                onClick={() => participation.competition && router.push(`/competitions/${participation.competition.id}`)}
+                onClick={() => participation.expand?.competition_id && router.push(`/competitions/${participation.expand.competition_id.id}`)}
               >
                 <div className="p-6">
                   <div className="flex items-start justify-between mb-4">
                     <h3 className="text-lg font-medium text-gray-900 flex-grow">
-                      {participation.competition?.name}
+                      {participation.expand?.competition_id?.name}
                     </h3>
                     <div className="flex items-center space-x-2 ml-2">
-                      {participation.competition?.status && (
+                      {participation.expand?.competition_id?.status && (
                         <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                          participation.competition.status === 'completed' 
+                          participation.expand.competition_id.status === 'completed' 
                             ? 'bg-green-100 text-green-800'
-                            : participation.competition.status === 'started'
+                            : participation.expand.competition_id.status === 'active'
                             ? 'bg-blue-100 text-blue-800'
                             : 'bg-gray-100 text-gray-800'
                         }`}>
-                          {participation.competition.status.charAt(0).toUpperCase() + 
-                           participation.competition.status.slice(1)}
+                          {participation.expand.competition_id.status.charAt(0).toUpperCase() + 
+                           participation.expand.competition_id.status.slice(1)}
                         </span>
                       )}
-                      {participation.competition && canDeleteCompetition(participation.competition) && (
+                      {participation.expand?.competition_id && canDeleteCompetition(participation.expand.competition_id) && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            setDeleteConfirmId(participation.competition!.id);
+                            setDeleteConfirmId(participation.expand!.competition_id!.id);
                           }}
                           className="p-1 text-gray-400 hover:text-red-600 transition-colors"
                           title="Delete competition"
@@ -242,7 +241,7 @@ export default function Competitions() {
                   </div>
                   
                   <p className="text-sm text-gray-500 mb-4 line-clamp-2">
-                    {participation.competition?.description || 'No description provided'}
+                    {participation.expand?.competition_id?.description || 'No description provided'}
                   </p>
                   
                   <div className="flex items-center text-xs text-gray-400 mb-4">
@@ -250,19 +249,29 @@ export default function Competitions() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" 
                         d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
-                    {participation.competition?.start_date &&
-                      new Date(participation.competition.start_date).toLocaleDateString()}{' '}
-                    -{' '}
-                    {participation.competition?.end_date &&
-                      new Date(participation.competition.end_date).toLocaleDateString()}
+                    {participation.expand?.competition_id?.end_date &&
+                      (() => {
+                        const daysLeft = calculateDaysLeft(participation.expand.competition_id.end_date);
+                        const formattedDays = formatDaysLeft(daysLeft);
+                        return (
+                          <span className={
+                            daysLeft < 0 ? 'text-red-500' : 
+                            daysLeft <= 7 ? 'text-orange-500' : 
+                            'text-gray-400'
+                          }>
+                            {formattedDays}
+                          </span>
+                        );
+                      })()
+                    }
                   </div>
 
                   <div className="flex justify-between items-center">
-                    {participation.competition?.status === 'draft' && (
+                    {participation.expand?.competition_id?.status === 'upcoming' && (
                       <div className="flex space-x-2">
                         <button
                           onClick={() => {
-                            setSelectedCompetition(participation.competition!);
+                            setSelectedCompetition(participation.expand!.competition_id!);
                             setIsInviteModalOpen(true);
                           }}
                           className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-indigo-600 hover:text-indigo-500"
@@ -272,15 +281,15 @@ export default function Competitions() {
                       </div>
                     )}
                   </div>
-                  {participation.competition?.status === 'started' && (
+                  {participation.expand?.competition_id?.status === 'active' && (
                     <LeaderboardCard 
-                      competitionId={participation.competition.id} 
+                      competitionId={participation.expand.competition_id.id} 
                       isEnded={false}
                     />
                   )}
-                  {participation.competition?.status === 'completed' && (
+                  {participation.expand?.competition_id?.status === 'completed' && (
                     <LeaderboardCard 
-                      competitionId={participation.competition.id} 
+                      competitionId={participation.expand.competition_id.id} 
                       isEnded={true}
                     />
                   )}

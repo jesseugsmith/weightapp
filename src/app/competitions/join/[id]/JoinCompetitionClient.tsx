@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/utils/supabase';
+
 import LoadingSpinner from '@/components/LoadingSpinner';
 
 interface JoinCompetitionClientProps {

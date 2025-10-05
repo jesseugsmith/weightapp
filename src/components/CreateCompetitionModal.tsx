@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { supabase } from '@/utils/supabase';
+import { pb } from '@/lib/pocketbase';
+
 
 interface CreateCompetitionModalProps {
   isOpen: boolean;
@@ -45,8 +46,11 @@ export default function CreateCompetitionModal({
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      if (startDate < today) {
-        setError('Start date cannot be in the past');
+      const tomorrow = new Date(today);
+      tomorrow.setDate(today.getDate() + 1);
+
+      if (startDate < tomorrow) {
+        setError('Start date cannot be in the past or today');
         return;
       }
 
@@ -55,48 +59,25 @@ export default function CreateCompetitionModal({
         return;
       }
 
-      const { data, error } = await supabase
-        .from('competitions')
-        .insert([
-          {
-            name: newCompetition.name,
-            description: newCompetition.description,
-            start_date: startDate.toISOString(),
-            end_date: endDate.toISOString(),
-            created_by: userId,
-            status: 'draft'
-          },
-        ])
-        .select()
-        .single();
+      const competitionData = {
+        name: newCompetition.name,
+        description: newCompetition.description,
+        start_date: newCompetition.startDate,
+        end_date: newCompetition.endDate,
+        created_by: userId,
+        status: 'draft',
+        is_public: true,
+        competition_type: 'weight_loss'
+      };
 
-      if (error) {
-        console.error('Supabase error:', error);
-        if (error.code === '23505') {
-          setError('A competition with this name already exists');
-        } else {
-          setError(error.message || 'Failed to create competition');
-        }
-        return;
-      }
+      const competition = await pb.collection('competitions').create(competitionData);
 
       // Automatically join the competition you create
-      if (data) {
-        const { error: joinError } = await supabase
-          .from('competition_participants')
-          .insert([
-            {
-              competition_id: data.id,
-              user_id: userId,
-            },
-          ]);
-
-        if (joinError) {
-          console.error('Join error:', joinError);
-          setError(joinError.message || 'Failed to join the competition');
-          return;
-        }
-      }
+      await pb.collection('competition_participants').create({
+        competition_id: competition.id,
+        user_id: userId,
+        joined_at: new Date().toISOString()
+      });
 
       setNewCompetition({
         name: '',

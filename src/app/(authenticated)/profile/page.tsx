@@ -3,17 +3,55 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/utils/supabase';
+import { pb } from '@/lib/pocketbase';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import ProfilePhotoUpload from '@/components/ProfilePhotoUpload';
 
-import type { Profile as DBProfile } from '@/types/database.types';
+import type { Profile as DBProfile } from '../../../types/database.types';
+
+// Helper function to format date for HTML date input
+function formatDateForInput(dateString: string): string {
+  if (!dateString) return '';
+  
+  // If it's already in YYYY-MM-DD format, return as is
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+    return dateString;
+  }
+  
+  // Otherwise, parse and format
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '';
+    return date.toISOString().split('T')[0];
+  } catch {
+    return '';
+  }
+}
+
+// Helper function to validate and format date for PocketBase
+function formatDateForPocketBase(dateString: string): string | null {
+  if (!dateString) return null;
+  
+  // Validate YYYY-MM-DD format
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+    console.warn('Invalid date format, expected YYYY-MM-DD:', dateString);
+    return null;
+  }
+  
+  // Validate it's a real date
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) {
+    console.warn('Invalid date:', dateString);
+    return null;
+  }
+  
+  return dateString;
+}
 
 interface ProfileFormData {
   first_name: string;
   last_name: string;
   nickname: string;
-  date_of_birth: string;
   photo_url: string | null;
 }
 
@@ -27,7 +65,6 @@ export default function ProfilePage() {
     first_name: '',
     last_name: '',
     nickname: '',
-    date_of_birth: '',
     photo_url: null,
   });
 
@@ -48,25 +85,14 @@ export default function ProfilePage() {
         console.log('Fetching profile for user:', user.id);
 
         // Get the existing profile
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('user_id', user.id)
-          .single();
+        const profile = await pb.collection('profiles').getFirstListItem(`user_id = "${user.id}"`);
 
-        if (error) {
-          console.error('Fetch error:', error);
-          throw error;
-        }
-
-        if (data) {
-          console.log('Profile data:', data);
-          const profile = data as DBProfile;
+        if (profile) {
+          console.log('Profile data:', profile);
           setProfile({
             first_name: profile.first_name || '',
             last_name: profile.last_name || '',
             nickname: profile.nickname || '',
-            date_of_birth: profile.date_of_birth ? new Date(profile.date_of_birth).toISOString().split('T')[0] : '',
             photo_url: profile.photo_url,
           });
         } else {
@@ -92,10 +118,18 @@ export default function ProfilePage() {
     setMessage({ type: '', text: '' });
 
     try {
-      if (!profile.date_of_birth && !profile.first_name && !profile.last_name && !profile.nickname) {
+      if (!profile.first_name && !profile.last_name && !profile.nickname) {
         setMessage({
           type: 'error',
           text: 'Please fill in at least one field.'
+        });
+        return;
+      }
+
+      if (!user) {
+        setMessage({
+          type: 'error',
+          text: 'Not authenticated'
         });
         return;
       }
@@ -105,18 +139,13 @@ export default function ProfilePage() {
         user_id: user.id, // Always include user_id
         first_name: profile.first_name.trim() || null,
         last_name: profile.last_name.trim() || null,
-        nickname: profile.nickname.trim() || null,
-        date_of_birth: profile.date_of_birth ? new Date(profile.date_of_birth).toISOString() : null,
-        // updated_at will be set by the database trigger
+        nickname: profile.nickname.trim() || null
       };
 
-      // Update using match on user_id to prevent duplicate records
-      const { error } = await supabase
-        .from('profiles')
-        .update(updates)
-        .eq('user_id', user.id);
 
-      if (error) throw error;
+      // Get the existing profile to update it
+      const existingProfile = await pb.collection('profiles').getFirstListItem(`user_id = "${user.id}"`);
+      await pb.collection('profiles').update(existingProfile.id, updates);
 
       setMessage({
         type: 'success',
@@ -210,20 +239,6 @@ export default function ProfilePage() {
                 id="nickname"
                 name="nickname"
                 value={profile.nickname}
-                onChange={handleChange}
-                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="date_of_birth" className="block text-sm font-medium text-gray-700">
-                Date of Birth
-              </label>
-              <input
-                type="date"
-                id="date_of_birth"
-                name="date_of_birth"
-                value={profile.date_of_birth}
                 onChange={handleChange}
                 className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
               />

@@ -1,6 +1,6 @@
 'use client';
 
-import { AuthProvider } from "@/contexts/AuthContext";
+import { AuthProvider } from "@/hooks/useAuth";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 import { PermissionProvider } from "@/contexts/PermissionContext";
 

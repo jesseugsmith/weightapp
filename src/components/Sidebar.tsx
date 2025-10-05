@@ -4,7 +4,10 @@ import { useRouter, usePathname } from 'next/navigation';
 import FitClashLogo from './FitClashLogo';
 import { useAuth } from '@/contexts/AuthContext';
 import { useProfile } from '@/hooks/useProfile';
+import { usePermissions } from '@/contexts/PermissionContext';
+import { pb } from '@/lib/pocketbase';
 import { useState } from 'react';
+import Image from 'next/image';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -18,6 +21,7 @@ export default function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed
   const pathname = usePathname();
   const { user, signOut } = useAuth();
   const { profile } = useProfile();
+  const { hasPermission, hasRole } = usePermissions();
 
   const menuItems = [
     {
@@ -40,6 +44,25 @@ export default function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed
     }
   ];
 
+  // Check if user has any admin permissions
+  const hasAdminAccess = hasPermission('manage_users') || 
+                         hasPermission('manage_roles') || 
+                         hasPermission('manage_admins') ||
+                         hasPermission('manage_invites') ||
+                         hasPermission('view_audit_logs') ||
+                         hasRole('admin') ||
+                         hasRole('super_admin');
+
+  // Add admin menu item if user has admin access
+  if (hasAdminAccess) {
+    menuItems.push({
+      name: 'Admin',
+      path: '/admin/users',
+      icon: '👨‍💼',
+      description: 'Administration'
+    });
+  }
+
   const isActive = (path: string) => pathname === path;
 
   const handleSignOut = async () => {
@@ -48,6 +71,51 @@ export default function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed
   };
 
   const sidebarWidth = isCollapsed ? 'w-16' : 'w-64';
+
+  // Get avatar URL from user or profile
+  const getAvatarUrl = () => {
+    // First try to get avatar from user object
+    if (user?.avatar) {
+      return pb.files.getUrl(user, user.avatar);
+    }
+    // Then try from profile
+    if (profile?.avatar) {
+      return pb.files.getUrl(profile, profile.avatar);
+    }
+    // Try photo_url from profile
+    if (profile?.photo_url) {
+      return profile.photo_url;
+    }
+    return null;
+  };
+
+  const avatarUrl = getAvatarUrl();
+
+  // Render avatar component
+  const renderAvatar = (size: 'small' | 'large') => {
+    const sizeClass = size === 'small' ? 'h-8 w-8 text-sm' : 'h-10 w-10 text-lg';
+    
+    if (avatarUrl) {
+      return (
+        <div className={`${sizeClass} rounded-full overflow-hidden bg-gray-700 flex-shrink-0`}>
+          <Image
+            src={avatarUrl}
+            alt="Profile"
+            width={size === 'small' ? 32 : 40}
+            height={size === 'small' ? 32 : 40}
+            className="object-cover w-full h-full"
+          />
+        </div>
+      );
+    }
+    
+    // Fallback to initials or icon
+    return (
+      <div className={`${sizeClass} rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold flex-shrink-0`}>
+        {profile?.first_name ? profile.first_name[0].toUpperCase() : '👤'}
+      </div>
+    );
+  };
 
   return (
     <>
@@ -126,10 +194,10 @@ export default function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed
                   router.push('/profile');
                   setIsOpen(false);
                 }}
-                className="h-8 w-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm hover:scale-105 transition-transform duration-200"
+                className="hover:scale-105 transition-transform duration-200"
                 title="Go to Profile"
               >
-                {profile?.first_name ? profile.first_name[0].toUpperCase() : '👤'}
+                {renderAvatar('small')}
               </button>
               <button
                 onClick={handleSignOut}
@@ -148,9 +216,7 @@ export default function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed
                 }}
                 className="w-full flex items-center space-x-3 mb-3 p-2 rounded-lg hover:bg-gray-800 transition-colors duration-200"
               >
-                <div className="h-10 w-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
-                  {profile?.first_name ? profile.first_name[0].toUpperCase() : '👤'}
-                </div>
+                {renderAvatar('large')}
                 <div className="flex-1 min-w-0 text-left">
                   <p className="text-sm font-medium text-white truncate">
                     {profile?.first_name || 'User'}

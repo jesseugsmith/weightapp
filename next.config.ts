@@ -14,9 +14,21 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   
   images: {
-    domains: [
-      'avatars.githubusercontent.com',
-      'lh3.googleusercontent.com',
+    remotePatterns: [
+      {
+        protocol: 'http',
+        hostname: 'localhost',
+        port: '8090',
+        pathname: '/api/files/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'avatars.githubusercontent.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'lh3.googleusercontent.com',
+      },
     ],
   },
 

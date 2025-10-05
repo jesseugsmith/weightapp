@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { supabase } from '@/utils/supabase';
+import { pb } from '@/lib/pocketbase';
 
 interface LogWeightModalProps {
   isOpen: boolean;
@@ -27,28 +27,17 @@ export default function LogWeightModal({ isOpen, onClose, userId, onWeightLogged
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      let photoUrl = null;
-
+      const formData = new FormData();
+      formData.append('user_id', userId);
+      formData.append('weight', weight);
+      if (notes) {
+        formData.append('notes', notes);
+      }
       if (photo) {
-        const { data, error: uploadError } = await supabase.storage
-          .from('photos')
-          .upload(`weight-photos/${userId}-${Date.now()}`, photo);
-
-        if (uploadError) throw uploadError;
-        photoUrl = data?.path;
+        formData.append('photo', photo);
       }
 
-      const { error: weightError } = await supabase.from('weight_entries').insert([
-        {
-          user_id: userId,
-          weight: parseFloat(weight), // already in lbs
-          date: new Date().toISOString(),
-          notes,
-          photo_url: photoUrl,
-        },
-      ]);
-
-      if (weightError) throw weightError;
+      await pb.collection('weight_entries').create(formData);
 
       setWeight('');
       setNotes('');

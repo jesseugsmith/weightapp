@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/utils/supabase';
+import { useAuth } from '@/hooks/useAuth';
+import { pb } from '@/lib/pocketbase';
+import { usePermissions } from '@/contexts/PermissionContext';
+
 import LoadingSpinner from '@/components/LoadingSpinner';
-import ProfilePhotoUpload from '@/components/ProfilePhotoUpload';
-import type { Role } from '@/types/database.types';
+import { Role } from '@/types/database.types';
 
 interface UserProfile {
   user_id: string;
@@ -35,19 +36,11 @@ function UserDetailsModal({ user, roles, onClose, onRoleChange }: UserDetailsMod
       <div className="bg-white rounded-lg max-w-2xl w-full p-6">
         <div className="flex justify-between items-start">
           <div className="flex items-center">
-            <ProfilePhotoUpload
-              userId={user.user_id}
-              currentPhotoUrl={user.photo_url}
-              onPhotoUpdate={(url) => {
-                const updatedUsers = users.map(u => 
-                  u.user_id === user.user_id ? { ...u, photo_url: url } : u
-                );
-                setUsers(updatedUsers);
-                setSelectedUser(prev => prev ? { ...prev, photo_url: url } : null);
-              }}
-              size="lg"
-              className="mr-4"
-            />
+            <div className="mr-4">
+              <div className="h-16 w-16 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-xl">
+                {user.first_name ? user.first_name[0].toUpperCase() : 'U'}
+              </div>
+            </div>
             <h2 className="text-xl font-semibold">{user.first_name} {user.last_name}</h2>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-500">
@@ -142,43 +135,88 @@ export default function UserManagement() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const { user } = useAuth();
+  const { hasPermission } = usePermissions();
 
   useEffect(() => {
-    checkAccess();
-    fetchData();
-  }, []);
-
-  const checkAccess = async () => {
-    const { data: hasAccess, error } = await supabase.rpc('has_permission', {
-      permission_name: 'manage_users'
-    });
-
-    if (error || !hasAccess) {
+    if (hasPermission('manage_users')) {
+      fetchData();
+    } else {
       setError('You do not have permission to manage users');
       setLoading(false);
-      return;
     }
-  };
+  }, [hasPermission]);
 
   const fetchData = async () => {
     try {
-      // Fetch all users with their roles and permissions from the role_management view
-      const { data: userData, error: userError } = await supabase
-        .from('role_management')
-        .select('*')
-        .order('email');
+      // Fetch all users
+      const usersData = await pb.collection('users').getFullList({
+        sort: 'email'
+      });
 
-      if (userError) throw userError;
-      setUsers(userData || []);
+      // Fetch all profiles
+      const profilesData = await pb.collection('profiles').getFullList();
+      const profilesMap = new Map(profilesData.map((p: any) => [p.user_id, p]));
 
-      // Fetch all available roles
-      const { data: rolesData, error: rolesError } = await supabase
-        .from('roles')
-        .select('*')
-        .order('name');
+      // Fetch all user roles
+      const userRolesData = await pb.collection('user_roles').getFullList({
+        expand: 'role_id'
+      });
 
-      if (rolesError) throw rolesError;
-      setRoles(rolesData || []);
+      // Fetch all roles
+      const rolesData = await pb.collection('roles').getFullList({
+        expand: 'role_permissions_via_role_id.permission_id',
+        sort: 'name'
+      });
+      setRoles(rolesData as Role[]);
+
+      // Group roles and permissions by user
+      const rolesByUser = new Map<string, string[]>();
+      const permissionsByUser = new Map<string, Set<string>>();
+
+      userRolesData.forEach((userRole: any) => {
+        const userId = userRole.user_id;
+        const role = userRole.expand?.role_id;
+        
+        if (role) {
+          // Add role name
+          if (!rolesByUser.has(userId)) {
+            rolesByUser.set(userId, []);
+          }
+          rolesByUser.get(userId)!.push(role.name);
+
+          // Add permissions from role
+          if (!permissionsByUser.has(userId)) {
+            permissionsByUser.set(userId, new Set());
+          }
+          
+          // Get permissions for this role
+          const rolePermissions = rolesData.find((r: any) => r.id === role.id);
+          if (rolePermissions?.expand?.role_permissions_via_role_id) {
+            rolePermissions.expand.role_permissions_via_role_id.forEach((rp: any) => {
+              if (rp.expand?.permission_id?.name) {
+                permissionsByUser.get(userId)!.add(rp.expand.permission_id.name);
+              }
+            });
+          }
+        }
+      });
+
+      // Combine all user data
+      const combinedUsers: UserProfile[] = usersData.map((u: any) => {
+        const profile = profilesMap.get(u.id);
+        return {
+          user_id: u.id,
+          email: u.email,
+          first_name: profile?.first_name || '',
+          last_name: profile?.last_name || '',
+          nickname: profile?.nickname || '',
+          photo_url: profile?.photo_url || profile?.avatar || u.avatar || null,
+          roles: rolesByUser.get(u.id) || [],
+          permissions: Array.from(permissionsByUser.get(u.id) || [])
+        };
+      });
+
+      setUsers(combinedUsers);
 
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -193,17 +231,54 @@ export default function UserManagement() {
     setSuccess('');
 
     try {
-      const { error } = await supabase.rpc(
-        action === 'add' ? 'assign_role' : 'remove_role',
-        {
-          user_id_param: userId,
-          role_name: roleName
+      if (action === 'add') {
+        // Find the role by name
+        const role = roles.find(r => r.name === roleName);
+        if (!role) {
+          setError('Role not found');
+          return;
         }
-      );
 
-      if (error) throw error;
+        // Check if user already has this role
+        const existingUserRole = await pb.collection('user_roles').getFirstListItem(
+          `user_id = "${userId}" && role_id = "${role.id}"`
+        ).catch(() => null);
 
-      setSuccess(`Role ${action === 'add' ? 'assigned' : 'removed'} successfully`);
+        if (existingUserRole) {
+          setError('User already has this role');
+          return;
+        }
+
+        // Create the user role
+        await pb.collection('user_roles').create({
+          user_id: userId,
+          role_id: role.id,
+          assigned_by: user?.id,
+          assigned_at: new Date().toISOString()
+        });
+
+        setSuccess('Role assigned successfully');
+      } else {
+        // Find the role by name
+        const role = roles.find(r => r.name === roleName);
+        if (!role) {
+          setError('Role not found');
+          return;
+        }
+
+        // Find and delete the user role
+        const userRole = await pb.collection('user_roles').getFirstListItem(
+          `user_id = "${userId}" && role_id = "${role.id}"`
+        );
+
+        if (userRole) {
+          await pb.collection('user_roles').delete(userRole.id);
+          setSuccess('Role removed successfully');
+        } else {
+          setError('User role not found');
+        }
+      }
+
       await fetchData();
       
       // Update the selected user if they're currently being viewed
@@ -265,17 +340,9 @@ export default function UserManagement() {
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center">
                             <div className="flex-shrink-0">
-                              <ProfilePhotoUpload
-                                userId={user.user_id}
-                                currentPhotoUrl={user.photo_url}
-                                onPhotoUpdate={(url) => {
-                                  const updatedUsers = users.map(u => 
-                                    u.user_id === user.user_id ? { ...u, photo_url: url } : u
-                                  );
-                                  setUsers(updatedUsers);
-                                }}
-                                size="sm"
-                              />
+                              <div className="h-10 w-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
+                                {user.first_name ? user.first_name[0].toUpperCase() : 'U'}
+                              </div>
                             </div>
                             <div className="ml-4">
                               <div className="text-sm font-medium text-gray-900">

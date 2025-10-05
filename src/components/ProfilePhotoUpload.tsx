@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import { supabase } from '@/utils/supabase';
+import { pb } from '@/lib/pocketbase';
 import Image from 'next/image';
 
 interface ProfilePhotoUploadProps {
@@ -45,80 +45,45 @@ export default function ProfilePhotoUpload({
         throw new Error('Image size must be less than 5MB');
       }
 
-      // Create a unique file name
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${userId}/${Date.now()}.${fileExt}`;
+      // Create FormData for file upload
+      const formData = new FormData();
+      formData.append('avatar', file);
 
-      // Upload the file to Supabase Storage
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('profile-photos')
-        .upload(fileName, file);
+      // Update the user profile with the new avatar
+      const updatedProfile = await pb.collection('profiles').update(userId, formData);
 
-      if (uploadError) throw uploadError;
+      // Get the avatar URL
+      const avatarUrl = updatedProfile.avatar 
+        ? pb.files.getUrl(updatedProfile, updatedProfile.avatar)
+        : null;
 
-      // Get the public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('profile-photos')
-        .getPublicUrl(fileName);
-
-      // Delete the old photo if it exists
-      if (currentPhotoUrl) {
-        const oldFileName = currentPhotoUrl.split('/').pop();
-        if (oldFileName) {
-          await supabase.storage
-            .from('profile-photos')
-            .remove([`${userId}/${oldFileName}`]);
-        }
-      }
-
-      // Update the profile with the new photo URL
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ photo_url: publicUrl })
-        .eq('user_id', userId);
-
-      if (updateError) throw updateError;
-
-      onPhotoUpdate(publicUrl);
-    } catch (error) {
-      console.error('Error uploading photo:', error);
-      setError(error instanceof Error ? error.message : 'Failed to upload photo');
+      onPhotoUpdate(avatarUrl);
+    } catch (err) {
+      console.error('Error uploading photo:', err);
+      setError(err instanceof Error ? err.message : 'Failed to upload photo');
     } finally {
       setIsUploading(false);
     }
-  }, [userId, currentPhotoUrl, onPhotoUpdate]);
+  }, [userId, onPhotoUpdate]);
 
   const removePhoto = useCallback(async () => {
     try {
       setIsUploading(true);
       setError(null);
 
-      if (currentPhotoUrl) {
-        const fileName = currentPhotoUrl.split('/').pop();
-        if (fileName) {
-          // Delete the file from storage
-          await supabase.storage
-            .from('profile-photos')
-            .remove([`${userId}/${fileName}`]);
-        }
+      // Update the profile to remove the avatar
+      await pb.collection('profiles').update(userId, {
+        avatar: null
+      });
 
-        // Update the profile to remove the photo URL
-        const { error: updateError } = await supabase
-          .from('profiles')
-          .update({ photo_url: null })
-          .eq('user_id', userId);
-
-        if (updateError) throw updateError;
-
-        onPhotoUpdate(null);
-      }
+      onPhotoUpdate(null);
     } catch (error) {
       console.error('Error removing photo:', error);
       setError('Failed to remove photo');
     } finally {
       setIsUploading(false);
     }
-  }, [userId, currentPhotoUrl, onPhotoUpdate]);
+  }, [userId, onPhotoUpdate]);
 
   return (
     <div className={className}>

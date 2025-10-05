@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/utils/supabase';
+import { pb } from '@/lib/pocketbase';
 import DebugAuth from '@/components/DebugAuth';
 
 export default function DebugPage() {
@@ -19,9 +19,9 @@ export default function DebugPage() {
           <h2 className="text-xl font-bold mb-4">Environment Variables</h2>
           <div className="space-y-4">
             <div>
-              <h3 className="font-semibold">NEXT_PUBLIC_SUPABASE_URL:</h3>
+              <h3 className="font-semibold">NEXT_PUBLIC_POCKETBASE_URL:</h3>
               <code className="block bg-gray-100 p-2 rounded">
-                {process.env.NEXT_PUBLIC_SUPABASE_URL || 'Not set'}
+                {process.env.NEXT_PUBLIC_POCKETBASE_URL || 'Not set'}
               </code>
             </div>
             <div>
@@ -31,7 +31,7 @@ export default function DebugPage() {
               </code>
             </div>
             <div>
-              <h3 className="font-semibold">Supabase Connection Test:</h3>
+              <h3 className="font-semibold">PocketBase Connection Test:</h3>
               <ConnectionTest />
             </div>
           </div>
@@ -47,8 +47,7 @@ function ConnectionTest() {
   useEffect(() => {
     async function testConnection() {
       try {
-        const { data, error } = await supabase.from('profiles').select('count');
-        if (error) throw error;
+        const records = await pb.collection('profiles').getList(1, 1);
         setStatus('✅ Connected successfully');
       } catch (error) {
         setStatus(`❌ Connection failed: ${error instanceof Error ? error.message : String(error)}`);

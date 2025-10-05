@@ -1,60 +1,47 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/utils/supabase';
+import { useAuth } from '@/hooks/useAuth';
+import { pb } from '@/lib/pocketbase';
+import { usePermissions } from '@/contexts/PermissionContext';
+
 import LoadingSpinner from '@/components/LoadingSpinner';
-import type { AdminRole } from '@/types/database.types';
+import type { AdminRole, User } from '@/types/database.types';
 
 interface AdminUser extends AdminRole {
-  user: {
-    email: string;
+  expand?: {
+    user_id?: User;
   };
 }
 
 export default function AdminManagement() {
   const [loading, setLoading] = useState(true);
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [admins, setAdmins] = useState<AdminUser[]>([]);
   const [newAdminEmail, setNewAdminEmail] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const { user } = useAuth();
+  const { hasRole } = usePermissions();
 
   useEffect(() => {
-    checkSuperAdminStatus();
-    if (isSuperAdmin) {
+    if (hasRole('super_admin')) {
       fetchAdmins();
+    } else {
+      setLoading(false);
     }
-  }, [isSuperAdmin]);
-
-  const checkSuperAdminStatus = async () => {
-    const { data: isSuperAdmin, error } = await supabase.rpc('is_super_admin');
-    if (error) {
-      console.error('Error checking super admin status:', error);
-      return;
-    }
-    setIsSuperAdmin(isSuperAdmin);
-    setLoading(false);
-  };
+  }, [hasRole]);
 
   const fetchAdmins = async () => {
     try {
-      const { data: adminRoles, error: adminError } = await supabase
-        .from('admin_roles')
-        .select(`
-          *,
-          user:user_id (
-            email
-          )
-        `)
-        .order('created_at', { ascending: false });
-
-      if (adminError) throw adminError;
+      const adminRoles = await pb.collection('admin_roles').getFullList({
+        expand: 'user_id'
+      });
       setAdmins(adminRoles as AdminUser[]);
     } catch (error) {
       console.error('Error fetching admins:', error);
       setError('Failed to fetch admin list');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -65,23 +52,23 @@ export default function AdminManagement() {
 
     try {
       // First, get the user ID from the email
-      const { data: userData, error: userError } = await supabase
-        .from('profiles')
-        .select('user_id')
-        .eq('email', newAdminEmail)
-        .single();
+      const users = await pb.collection('users').getFullList({
+        filter: `email = "${newAdminEmail}"`
+      });
 
-      if (userError || !userData) {
+      if (users.length === 0) {
         setError('User not found with this email');
         return;
       }
 
-      // Add the admin role
-      const { error: addError } = await supabase.rpc('add_admin', {
-        user_id_param: userData.user_id
-      });
+      const userId = users[0].id;
 
-      if (addError) throw addError;
+      // Add the admin role
+      await pb.collection('admin_roles').create({
+        user_id: userId,
+        role: 'admin',
+        assigned_by: user?.id
+      });
 
       setSuccess('Admin role added successfully');
       setNewAdminEmail('');
@@ -94,11 +81,7 @@ export default function AdminManagement() {
 
   const handleRemoveAdmin = async (adminId: string) => {
     try {
-      const { error } = await supabase.rpc('remove_admin', {
-        user_id_param: adminId
-      });
-
-      if (error) throw error;
+      await pb.collection('admin_roles').delete(adminId);
 
       setSuccess('Admin role removed successfully');
       fetchAdmins();
@@ -116,7 +99,7 @@ export default function AdminManagement() {
     );
   }
 
-  if (!isSuperAdmin) {
+  if (!hasRole('super_admin')) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-md w-full">
@@ -195,10 +178,10 @@ export default function AdminManagement() {
                     {admins.map((admin) => (
                       <tr key={admin.id}>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {admin.user.email}
+                          {admin.expand?.user_id?.email}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {admin.role_type === 'super_admin' ? (
+                          {admin.role === 'super_admin' ? (
                             <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">
                               Super Admin
                             </span>
@@ -212,9 +195,9 @@ export default function AdminManagement() {
                           {new Date(admin.created_at).toLocaleDateString()}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                          {admin.role_type === 'admin' && (
+                          {admin.role === 'admin' && (
                             <button
-                              onClick={() => handleRemoveAdmin(admin.user_id)}
+                              onClick={() => handleRemoveAdmin(admin.id)}
                               className="text-red-600 hover:text-red-900"
                             >
                               Remove

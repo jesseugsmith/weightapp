@@ -1,14 +1,16 @@
+import { Variants } from 'framer-motion';
+
 // Animation variants for reusable animations
-export const fadeInUp = {
+export const fadeInUp: Variants = {
   hidden: { opacity: 0, y: 20 },
   visible: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.5, ease: "easeOut" }
+    transition: { duration: 0.5, ease: [0.4, 0, 0.2, 1] }
   }
 };
 
-export const popIn = {
+export const popIn: Variants = {
   hidden: { scale: 0.8, opacity: 0 },
   visible: {
     scale: 1,
@@ -21,7 +23,7 @@ export const popIn = {
   }
 };
 
-export const staggerChildren = {
+export const staggerChildren: Variants = {
   visible: {
     transition: {
       staggerChildren: 0.1
@@ -29,7 +31,7 @@ export const staggerChildren = {
   }
 };
 
-export const slideInFromRight = {
+export const slideInFromRight: Variants = {
   hidden: { x: 50, opacity: 0 },
   visible: {
     x: 0,
@@ -57,7 +59,7 @@ export const successAnimation = {
   rotate: [0, 360],
   transition: {
     duration: 0.6,
-    ease: "easeInOut"
+    ease: [0.4, 0, 0.2, 1]
   }
 };
 

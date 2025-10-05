@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { supabase } from '@/utils/supabase';
-import { useAuth } from '@/contexts/AuthContext';
+import { pb } from '@/lib/pocketbase';
+import { useAuth } from '@/hooks/useAuth';
 import { Line } from 'react-chartjs-2';
 import { motion, AnimatePresence } from 'framer-motion';
+import { fadeInUp, popIn, bounceScale } from '@/utils/animations';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -15,7 +16,6 @@ import {
   Tooltip,
   Legend
 } from 'chart.js';
-import { fadeInUp, popIn, bounceScale } from '@/utils/animations';
 
 type TimeFrame = '1W' | '1M' | '3M' | '6M' | '1Y' | 'ALL';
 
@@ -49,14 +49,17 @@ export default function WeightChart() {
     if (!user) return;
 
     try {
-      const { data, error } = await supabase
-        .from('weight_entries')
-        .select('date, weight')
-        .eq('user_id', user.id)
-        .order('date', { ascending: true });
+      const records = await pb.collection('weight_entries').getFullList({
+        filter: `user_id = "${user.id}"`,
+        sort: 'date',
+      });
 
-      if (error) throw error;
-      setWeightData(data || []);
+      const weightEntries = records.map(record => ({
+        date: record.date,
+        weight: record.weight
+      }));
+
+      setWeightData(weightEntries);
     } catch (err) {
       console.error('Error fetching weight data:', err);
       setError('Failed to load weight data');
@@ -70,28 +73,24 @@ export default function WeightChart() {
       if (!user) return;
 
       try {
-        // Set up real-time subscription
-        const channel = supabase
-          .channel('weight_entries_changes')
-          .on(
-            'postgres_changes',
-            {
-              event: '*',
-              schema: 'public',
-              table: 'weight_entries',
-              filter: `user_id=eq.${user.id}`
-            },
-            () => {
-              fetchWeightData(); // Refetch when data changes
-            }
-          )
-          .subscribe();
+        // Set up real-time subscription with PocketBase
+        let unsubscribe: (() => void) | null = null;
+        
+        pb.collection('weight_entries').subscribe('*', (e) => {
+          if (e.record.user_id === user.id) {
+            fetchWeightData(); // Refetch when data changes
+          }
+        }).then((unsub) => {
+          unsubscribe = unsub;
+        });
 
         // Initial data fetch
         await fetchWeightData();
 
         return () => {
-          channel.unsubscribe();
+          if (unsubscribe) {
+            unsubscribe();
+          }
         };
       } catch (err) {
         console.error('Error setting up real-time subscription:', err);

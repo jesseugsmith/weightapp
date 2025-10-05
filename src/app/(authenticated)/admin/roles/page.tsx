@@ -1,14 +1,18 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/utils/supabase';
+import { useAuth } from '@/hooks/useAuth';
+import { pb } from '@/lib/pocketbase';
+import { usePermissions } from '@/contexts/PermissionContext';
+
 import LoadingSpinner from '@/components/LoadingSpinner';
-import type { Role, Permission, UserRole } from '@/types/database.types';
+import { Role, Permission, UserRole, User } from '@/types/database.types';
 
 interface UserWithRoles {
   id: string;
   email: string;
+  first_name?: string;
+  last_name?: string;
   roles: Role[];
 }
 
@@ -22,49 +26,32 @@ export default function RoleManagement() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const { user } = useAuth();
+  const { hasPermission } = usePermissions();
 
   useEffect(() => {
-    checkAdminAccess();
-    fetchRolesAndPermissions();
-    fetchUsers();
-  }, []);
-
-  const checkAdminAccess = async () => {
-    const { data: hasAccess, error } = await supabase.rpc('has_permission', {
-      permission_name: 'manage_roles'
-    });
-
-    if (error || !hasAccess) {
+    if (hasPermission('manage_roles')) {
+      fetchRolesAndPermissions();
+      fetchUsers();
+    } else {
       setError('You do not have permission to manage roles');
       setLoading(false);
-      return;
     }
-  };
+  }, [hasPermission]);
 
   const fetchRolesAndPermissions = async () => {
     try {
       // Fetch roles with their permissions
-      const { data: rolesData, error: rolesError } = await supabase
-        .from('roles')
-        .select(`
-          *,
-          role_permissions (
-            permissions (*)
-          )
-        `)
-        .order('name');
-
-      if (rolesError) throw rolesError;
-      setRoles(rolesData || []);
+      const rolesData = await pb.collection('roles').getFullList({
+        expand: 'role_permissions_via_role_id.permission_id',
+        sort: 'name'
+      });
+      setRoles(rolesData as Role[]);
 
       // Fetch all permissions
-      const { data: permsData, error: permsError } = await supabase
-        .from('permissions')
-        .select('*')
-        .order('name');
-
-      if (permsError) throw permsError;
-      setPermissions(permsData || []);
+      const permsData = await pb.collection('permissions').getFullList({
+        sort: 'name'
+      });
+      setPermissions(permsData as Permission[]);
     } catch (error) {
       console.error('Error fetching roles and permissions:', error);
       setError('Failed to fetch roles and permissions');
@@ -73,23 +60,44 @@ export default function RoleManagement() {
 
   const fetchUsers = async () => {
     try {
-      // Fetch users with their roles from the role_management view
-      const { data: userData, error: userError } = await supabase
-        .from('role_management')
-        .select('*');
+      // Fetch all users
+      const usersData = await pb.collection('users').getFullList({
+        sort: 'email'
+      });
 
-      if (userError) throw userError;
+      // Fetch user roles with expansions
+      const userRolesData = await pb.collection('user_roles').getFullList({
+        expand: 'role_id'
+      });
 
-      const usersWithRoles = (userData || []).map(u => ({
-        id: u.user_id,
-        email: u.email,
-        first_name: u.first_name,
-        last_name: u.last_name,
-        roles: (u.roles || []).filter(Boolean).map(roleName => ({
-          id: roleName, // Using role name as ID since we don't have the role ID in the view
-          name: roleName
-        }))
-      }));
+      // Fetch profiles to get first_name and last_name
+      const profilesData = await pb.collection('profiles').getFullList();
+      const profilesMap = new Map(profilesData.map(p => [p.user_id, p]));
+
+      // Group roles by user
+      const rolesByUser = new Map<string, Role[]>();
+      userRolesData.forEach((userRole: any) => {
+        const userId = userRole.user_id;
+        const role = userRole.expand?.role_id;
+        if (role) {
+          if (!rolesByUser.has(userId)) {
+            rolesByUser.set(userId, []);
+          }
+          rolesByUser.get(userId)!.push(role);
+        }
+      });
+
+      // Combine users with their roles
+      const usersWithRoles: UserWithRoles[] = usersData.map((u: any) => {
+        const profile = profilesMap.get(u.id);
+        return {
+          id: u.id,
+          email: u.email,
+          first_name: profile?.first_name,
+          last_name: profile?.last_name,
+          roles: rolesByUser.get(u.id) || []
+        };
+      });
 
       setUsers(usersWithRoles);
     } catch (error) {
@@ -107,12 +115,30 @@ export default function RoleManagement() {
     setSuccess('');
 
     try {
-      const { error } = await supabase.rpc('assign_role', {
-        user_id_param: selectedUser,
-        role_name: selectedRole
-      });
+      // Find the role by name
+      const role = roles.find(r => r.name === selectedRole);
+      if (!role) {
+        setError('Role not found');
+        return;
+      }
 
-      if (error) throw error;
+      // Check if user already has this role
+      const existingUserRole = await pb.collection('user_roles').getFirstListItem(
+        `user_id = "${selectedUser}" && role_id = "${role.id}"`
+      ).catch(() => null);
+
+      if (existingUserRole) {
+        setError('User already has this role');
+        return;
+      }
+
+      // Create the user role
+      await pb.collection('user_roles').create({
+        user_id: selectedUser,
+        role_id: role.id,
+        assigned_by: user?.id,
+        assigned_at: new Date().toISOString()
+      });
 
       setSuccess('Role assigned successfully');
       fetchUsers(); // Refresh the user list
@@ -129,15 +155,25 @@ export default function RoleManagement() {
     setSuccess('');
 
     try {
-      const { error } = await supabase.rpc('remove_role', {
-        user_id_param: userId,
-        role_name: roleName
-      });
+      // Find the role by name
+      const role = roles.find(r => r.name === roleName);
+      if (!role) {
+        setError('Role not found');
+        return;
+      }
 
-      if (error) throw error;
+      // Find and delete the user role
+      const userRole = await pb.collection('user_roles').getFirstListItem(
+        `user_id = "${userId}" && role_id = "${role.id}"`
+      );
 
-      setSuccess('Role removed successfully');
-      fetchUsers(); // Refresh the user list
+      if (userRole) {
+        await pb.collection('user_roles').delete(userRole.id);
+        setSuccess('Role removed successfully');
+        fetchUsers(); // Refresh the user list
+      } else {
+        setError('User role not found');
+      }
     } catch (error) {
       console.error('Error removing role:', error);
       setError('Failed to remove role');

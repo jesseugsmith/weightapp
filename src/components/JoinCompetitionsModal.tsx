@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/utils/supabase';
+import { pb } from '@/lib/pocketbase';
 import { Competition } from '@/types/database.types';
 import LoadingSpinner from '@/components/LoadingSpinner';
 
@@ -31,28 +31,25 @@ export default function JoinCompetitionsModal({
 
   const fetchCompetitions = async () => {
     try {
-      const { data, error } = await supabase
-        .from('competitions')
-        .select(`
-          *,
-          competition_participants!competition_participants_competition_id_fkey (
-            user_id
-          )
-        `)
-        .gte('end_date', new Date().toISOString())
-        .eq('status', 'draft')
-        .order('start_date', { ascending: true });
+      // Get competitions that are still in draft status and haven't ended
+      const competitions = await pb.collection('competitions').getFullList({
+        filter: `end_date >= "${new Date().toISOString()}" && status = "draft"`,
+        sort: 'start_date',
+      });
 
-      if (error) throw error;
+      // Get current user's participations to filter out competitions they've already joined
+      const participations = await pb.collection('competition_participants').getFullList({
+        filter: `user_id = "${userId}"`,
+      });
 
+      const participatedCompetitionIds = participations.map(p => p.competition_id);
+      
       // Filter out competitions where the user is already a participant
-      const filteredCompetitions = data.filter(comp => 
-        !comp.competition_participants.some(
-          (participant: { user_id: string }) => participant.user_id === userId
-        )
+      const filteredCompetitions = competitions.filter(comp => 
+        !participatedCompetitionIds.includes(comp.id)
       );
 
-      setCompetitions(filteredCompetitions);
+      setCompetitions(filteredCompetitions as Competition[]);
     } catch (error) {
       console.error('Error fetching competitions:', error);
     } finally {

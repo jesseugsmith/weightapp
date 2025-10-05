@@ -2,23 +2,16 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/contexts/AuthContext';
-import { useProfile } from '@/hooks/useProfile';
+import { useAuth } from '@/hooks/useAuth';
 import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
-import { popIn, slideInFromRight } from '@/utils/animations';
 import AdminLinks from './AdminLinks';
 
 export default function UserMenu() {
   const { user, signOut } = useAuth();
-  const { profile, loading, error } = useProfile();
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
-
-  useEffect(() => {
-    console.log('UserMenu Profile:', { profile, loading, error });
-  }, [profile, loading, error]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -65,7 +58,7 @@ export default function UserMenu() {
           }}
         >
           <Image
-            src={user.user_metadata?.avatar_url || defaultAvatar}
+            src={user.avatar || defaultAvatar}
             alt="User avatar"
             width={32}
             height={32}
@@ -90,70 +83,57 @@ export default function UserMenu() {
 
       <AnimatePresence>
         {isOpen && (
-        <motion.div
-          className="absolute right-0 mt-2 w-64 rounded-md shadow-lg py-1 bg-white ring-1 ring-black ring-opacity-5"
-          initial="hidden"
-          animate="visible"
-          exit="hidden"
-          variants={{
-            hidden: { opacity: 0, scale: 0.95, y: -20 },
-            visible: {
-              opacity: 1,
-              scale: 1,
-              y: 0,
-              transition: {
-                type: "spring",
-                stiffness: 300,
-                damping: 25
+          <motion.div
+            className="absolute right-0 mt-2 w-64 rounded-md shadow-lg py-1 bg-white ring-1 ring-black ring-opacity-5"
+            initial="hidden"
+            animate="visible"
+            exit="hidden"
+            variants={{
+              hidden: { opacity: 0, scale: 0.95, y: -20 },
+              visible: {
+                opacity: 1,
+                scale: 1,
+                y: 0,
+                transition: {
+                  type: "spring",
+                  stiffness: 300,
+                  damping: 25
+                }
               }
-            }
-          }}
-        >
-          <div className="px-4 py-2 border-b border-gray-100">
-            {loading ? (
-              <p className="text-sm text-gray-500">Loading profile...</p>
-            ) : profile?.first_name ? (
-              <p className="text-sm font-medium text-gray-900">{profile.first_name}</p>
-            ) : (
-              <p className="text-sm text-gray-500">No name set</p>
-            )}
-            <p className="text-sm text-gray-500 break-all">{user.email}</p>
-            {error && (
-              <p className="text-xs text-red-500">Error loading profile</p>
-            )}
-          </div>
+            }}
+          >
+            <div className="px-4 py-2 border-b border-gray-100">
+              <p className="text-sm font-medium text-gray-900">
+                {user.first_name} {user.last_name}
+              </p>
+              <p className="text-sm text-gray-500 break-all">
+                {user.email}
+              </p>
+            </div>
 
-          <div className="py-1">
-            {[
-              { href: '/profile', text: 'Profile Settings' }
-            ].map((item, index) => (
+            <div className="py-1">
               <motion.a
-                key={item.href}
-                href={item.href}
+                href="/profile"
                 className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                variants={popIn}
-                custom={index}
                 whileHover={{ x: 5 }}
                 transition={{ type: "spring", stiffness: 300, damping: 20 }}
               >
-                {item.text}
+                Profile Settings
               </motion.a>
-            ))}
-            
-            <AdminLinks className="border-t border-gray-100 mt-1 pt-1" />
-          </div>
+              
+              <AdminLinks className="border-t border-gray-100 mt-1 pt-1" />
+            </div>
 
-          <motion.button
-            onClick={handleSignOut}
-            className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
-            variants={popIn}
-            whileHover={{ x: 5, backgroundColor: '#FEE2E2' }}
-            whileTap={{ scale: 0.98 }}
-          >
-            Sign out
-          </motion.button>
-        </motion.div>
-      )}
+            <motion.button
+              onClick={handleSignOut}
+              className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
+              whileHover={{ x: 5, backgroundColor: '#FEE2E2' }}
+              whileTap={{ scale: 0.98 }}
+            >
+              Sign out
+            </motion.button>
+          </motion.div>
+        )}
       </AnimatePresence>
     </div>
   );

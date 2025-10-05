@@ -1,16 +1,17 @@
 'use client';
 
 import { useState } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import Link from 'next/link';
 
 export default function SignIn() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const { signIn, signUp } = useAuth();
+  const { signIn, signInWithOAuth } = useAuth();
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -18,8 +19,12 @@ export default function SignIn() {
     setIsProcessing(true);
     setError('');
     try {
-      await signIn(email, password);
-      router.push('/home');
+      const result = await signIn(email, password);
+      if (result.error) {
+        setError(result.error);
+      } else {
+        router.push('/home');
+      }
     } catch (error) {
       setError('Failed to sign in');
     } finally {
@@ -31,10 +36,26 @@ export default function SignIn() {
     setIsProcessing(true);
     setError('');
     try {
-      await signUp('', '', true);
-      router.push('/home'); // Redirect to home after successful Google sign-in
-    } catch (error) {
-      setError('Failed to sign in with Google');
+      console.log('Starting Google OAuth sign-in...');
+      const result = await signInWithOAuth('google');
+      if (result.error) {
+        console.error('OAuth error:', result.error);
+        setError(result.error);
+      } else if (result.user) {
+        console.log('OAuth success:', result.user);
+        router.push('/home');
+      }
+    } catch (error: any) {
+      console.error('OAuth catch error:', error);
+      // Handle specific OAuth errors
+      if (error.message?.includes('popup')) {
+        setError('Please allow popups for this site and try again');
+      } else if (error.message?.includes('cancelled')) {
+        setError('Sign-in was cancelled');
+      } else {
+        setError('Failed to sign in with Google. Please try again.');
+      }
+    } finally {
       setIsProcessing(false);
     }
   };
@@ -60,6 +81,7 @@ export default function SignIn() {
                 placeholder="Email address"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                disabled={isProcessing}
               />
             </div>
             <div>
@@ -73,6 +95,7 @@ export default function SignIn() {
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                disabled={isProcessing}
               />
             </div>
           </div>
@@ -84,9 +107,10 @@ export default function SignIn() {
           <div>
             <button
               type="submit"
-              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              disabled={isProcessing}
+              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Sign in
+              {isProcessing ? 'Signing in...' : 'Sign in'}
             </button>
           </div>
         </form>
@@ -104,7 +128,8 @@ export default function SignIn() {
           <div className="mt-6">
             <button
               onClick={handleGoogleSignIn}
-              className="w-full flex items-center justify-center px-4 py-2 border border-gray-700 shadow-sm text-sm font-medium rounded-md text-dark-primary bg-dark-secondary hover:bg-dark-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              disabled={isProcessing}
+              className="w-full flex items-center justify-center px-4 py-2 border border-gray-700 shadow-sm text-sm font-medium rounded-md text-dark-primary bg-dark-secondary hover:bg-dark-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Image
                 src="/google.svg"
@@ -113,9 +138,15 @@ export default function SignIn() {
                 height={20}
                 className="mr-2"
               />
-              Sign in with Google
+              {isProcessing ? 'Signing in...' : 'Sign in with Google'}
             </button>
           </div>
+        </div>
+
+        <div className="text-center">
+          <Link href="/signup" className="text-indigo-500 hover:text-indigo-400">
+            Don't have an account? Sign up
+          </Link>
         </div>
       </div>
     </div>

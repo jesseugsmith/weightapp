@@ -1,9 +1,22 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { useAuth } from './AuthContext';
-import { supabase } from '@/utils/supabase';
-import type { Role, Permission } from '@/types/database.types';
+import { useAuth } from '@/hooks/useAuth';
+import { pb } from '@/lib/pocketbase';
+
+interface Role {
+  id: string;
+  name: string;
+  description?: string;
+}
+
+interface Permission {
+  id: string;
+  name: string;
+  description?: string;
+  resource: string;
+  action: string;
+}
 
 interface PermissionContextType {
   loading: boolean;
@@ -35,46 +48,28 @@ export function PermissionProvider({ children }: { children: ReactNode }) {
   const fetchUserRolesAndPermissions = async () => {
     try {
       // First fetch user's roles
-      const { data: userRoles, error: rolesError } = await supabase
-        .from('user_roles')
-        .select(`
-          role:roles (
-            id,
-            name,
-            description
-          )
-        `)
-        .eq('user_id', user?.id);
-
-      if (rolesError) throw rolesError;
+      const userRoles = await pb.collection('user_roles').getFullList({
+        filter: `user_id = "${user?.id}"`,
+        expand: 'role_id'
+      });
 
       if (userRoles) {
         const roles = userRoles
-          .map(ur => ur.role)
+          .map(ur => ur.expand?.role_id)
           .filter((r): r is Role => !!r);
         setRoles(roles);
 
         // Then fetch permissions for these roles
         const roleIds = roles.map(r => r.id);
         if (roleIds.length > 0) {
-          const { data: rolePermissions, error: permError } = await supabase
-            .from('role_permissions')
-            .select(`
-              permissions (
-                id,
-                name,
-                description,
-                resource,
-                action
-              )
-            `)
-            .in('role_id', roleIds);
-
-          if (permError) throw permError;
+          const rolePermissions = await pb.collection('role_permissions').getFullList({
+            filter: roleIds.map(id => `role_id = "${id}"`).join(' || '),
+            expand: 'permission_id'
+          });
 
           if (rolePermissions) {
             const permissions = rolePermissions
-              .map(rp => rp.permissions)
+              .map(rp => rp.expand?.permission_id)
               .filter((p): p is Permission => !!p);
 
             // Remove duplicates

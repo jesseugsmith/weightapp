@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import LoadingSpinner from '@/components/LoadingSpinner';
-import { supabase } from '@/utils/supabase';
+
 
 interface InviteToken {
   id: string;

@@ -16,6 +16,18 @@ const adminLinks: AdminLink[] = [
     description: 'Manage users, roles, and permissions'
   },
   {
+    href: '/admin/management',
+    label: 'Admin Management',
+    requiredPermission: 'manage_admins',
+    description: 'Manage admin roles and permissions'
+  },
+  {
+    href: '/admin/roles',
+    label: 'Role Management',
+    requiredPermission: 'manage_roles',
+    description: 'Assign and remove user roles'
+  },
+  {
     href: '/admin/invites',
     label: 'Invite Management',
     requiredPermission: 'manage_invites',
