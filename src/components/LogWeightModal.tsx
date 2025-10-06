@@ -52,7 +52,7 @@ export default function LogWeightModal({ isOpen, onClose, userId, onWeightLogged
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md">
+      <div className="bg-white rounded-lg p-6 w-full max-w-md scr">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-medium">Log Weight</h2>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
@@ -100,13 +100,6 @@ export default function LogWeightModal({ isOpen, onClose, userId, onWeightLogged
               onChange={handlePhotoChange}
               className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border file:border-gray-300 file:text-sm file:font-medium file:bg-gray-50 file:text-gray-700 hover:file:bg-gray-100"
             />
-            {photoPreview && (
-              <img
-                src={photoPreview}
-                alt="Photo preview"
-                className="mt-2 w-full h-auto rounded-md border border-gray-300"
-              />
-            )}
           </div>
           <div className="flex justify-end space-x-3">
             <button
