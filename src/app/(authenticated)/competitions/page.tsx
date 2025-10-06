@@ -6,7 +6,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import { competitionService } from '@/utils/dataService';
 
-import { Competition, CompetitionParticipant } from '../../../types/database.types';
+import { Competition, CompetitionParticipant, User } from '../../../types/database.types';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import CreateCompetitionModal from '@/components/CreateCompetitionModal';
 import InviteMembersModal from '@/components/InviteMembersModal';
@@ -14,12 +14,18 @@ import JoinCompetitionsModal from '@/components/JoinCompetitionsModal';
 import LeaderboardCard from '@/components/LeaderboardCard';
 import { usePermissions } from '@/contexts/PermissionContext';
 
+interface ParticipantWithUser {
+  user: User;
+  avatarUrl: string | null;
+}
+
 export default function Competitions() {
   const { user } = useAuth();
   const { can } = usePermissions();
   const router = useRouter();
   const [competitions, setCompetitions] = useState<Competition[]>([]);
   const [myCompetitions, setMyCompetitions] = useState<CompetitionParticipant[]>([]);
+  const [competitionParticipants, setCompetitionParticipants] = useState<Record<string, ParticipantWithUser[]>>({});
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
@@ -72,10 +78,53 @@ export default function Competitions() {
         });
 
       setMyCompetitions(sortedCompetitions as CompetitionParticipant[]);
+      
+      // Fetch participants for each competition
+      await fetchCompetitionParticipants(sortedCompetitions as CompetitionParticipant[]);
     } catch (error) {
       console.error('Error fetching my competitions:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchCompetitionParticipants = async (competitions: CompetitionParticipant[]) => {
+    try {
+      const participantsMap: Record<string, ParticipantWithUser[]> = {};
+      
+      for (const competition of competitions) {
+        const competitionId = competition.expand?.competition_id?.id;
+        if (!competitionId) continue;
+        
+        const participants = await pb.collection('competition_participants').getFullList({
+          filter: `competition_id = "${competitionId}"`,
+          expand: 'user_id',
+          limit: 10 // Limit to first 10 participants for display
+        });
+        
+        const participantsWithAvatars: ParticipantWithUser[] = participants
+          .filter((p: any) => p.expand?.user_id)
+          .map((p: any) => {
+            const user = p.expand.user_id as User;
+            let avatarUrl = null;
+            
+            // Try to get avatar from user
+            if (user.avatar) {
+              avatarUrl = pb.files.getUrl(user, user.avatar, { thumb: '100x100' });
+            }
+            
+            return {
+              user,
+              avatarUrl
+            };
+          });
+        
+        participantsMap[competitionId] = participantsWithAvatars;
+      }
+      
+      setCompetitionParticipants(participantsMap);
+    } catch (error) {
+      console.error('Error fetching competition participants:', error);
     }
   };
 
@@ -161,6 +210,55 @@ export default function Competitions() {
     }
   };
 
+  const renderParticipantAvatars = (competitionId: string) => {
+    const participants = competitionParticipants[competitionId] || [];
+    const maxDisplay = 5;
+    const displayParticipants = participants.slice(0, maxDisplay);
+    const remaining = participants.length - maxDisplay;
+    
+    if (participants.length === 0) {
+      return null;
+    }
+
+    return (
+      <div className="flex items-center">
+        <div className="flex -space-x-2">
+          {displayParticipants.map((participant, index) => (
+            <div
+              key={participant.user.id}
+              className="relative w-8 h-8 rounded-full border-2 border-white bg-gray-200 overflow-hidden"
+              style={{ zIndex: maxDisplay - index }}
+              title={participant.user.username || participant.user.email}
+            >
+              {participant.avatarUrl ? (
+                <img
+                  src={participant.avatarUrl}
+                  alt={participant.user.username || 'User'}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-indigo-400 to-indigo-600 text-white text-xs font-medium">
+                  {(participant.user.username?.[0] || participant.user.email?.[0] || '?').toUpperCase()}
+                </div>
+              )}
+            </div>
+          ))}
+          {remaining > 0 && (
+            <div
+              className="relative w-8 h-8 rounded-full border-2 border-white bg-gray-300 flex items-center justify-center text-xs font-medium text-gray-600"
+              style={{ zIndex: 0 }}
+            >
+              +{remaining}
+            </div>
+          )}
+        </div>
+        <span className="ml-3 text-sm text-gray-500">
+          {participants.length} {participants.length === 1 ? 'participant' : 'participants'}
+        </span>
+      </div>
+    );
+  };
+
   if (loading) {
     return <LoadingSpinner message="Loading competitions..." />;
   }
@@ -243,6 +341,13 @@ export default function Competitions() {
                   <p className="text-sm text-gray-500 mb-4 line-clamp-2">
                     {participation.expand?.competition_id?.description || 'No description provided'}
                   </p>
+                  
+                  {/* Participant avatars */}
+                  {participation.expand?.competition_id?.id && (
+                    <div className="mb-4">
+                      {renderParticipantAvatars(participation.expand.competition_id.id)}
+                    </div>
+                  )}
                   
                   <div className="flex items-center text-xs text-gray-400 mb-4">
                     <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
