@@ -71,7 +71,7 @@ export const standingsService = {
     try {
       const participants = await pb.collection('competition_participants').getFullList<ParticipantWithUser>({
         filter: `competition_id = "${competitionId}" && is_active = true`,
-        sort: '-weight_loss_percentage', // Sort by best performance
+        sort: '-weight_change_percentage', // Sort by best performance
         expand: 'user_id'
       });
 
