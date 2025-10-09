@@ -66,9 +66,17 @@ export default function LeaderboardCard({
     return change > 0 ? `Gained ${absChange.toFixed(1)} lbs` : `Lost ${absChange.toFixed(1)} lbs`;
   };
 
-  const formatPercentage = (percentage: number): string => {
-    const sign = percentage >= 0 ? '+' : '';
-    return `${sign}${percentage.toFixed(1)}%`;
+  const formatPercentage = (percentage: number, competitionType: string): string => {
+    // For weight loss competitions, positive change means weight was lost, so show negative percentage
+    // For weight gain competitions, positive change means weight was gained, so show positive percentage
+    let adjustedPercentage = percentage;
+    
+    if (competitionType === 'weight_loss' || competitionType === 'body_fat_loss') {
+      adjustedPercentage = -percentage; // Flip the sign for weight loss competitions
+    }
+    
+    const sign = adjustedPercentage >= 0 ? '+' : '';
+    return `${sign}${adjustedPercentage.toFixed(1)}%`;
   };
 
   const getCompetitionTypeLabel = (type: string): string => {
@@ -203,7 +211,7 @@ export default function LeaderboardCard({
                         {formatWeightChange(weightChange, competitionType)} {getProgressIcon(weightChange, competitionType)}
                       </span>
                       <span className="ml-2 text-gray-400">
-                        🎯 {formatPercentage(Math.abs(percentage))}
+                        🎯 {formatPercentage(percentage, competitionType)}
                       </span>
                     </p>
                     {standing.last_weight_entry && (
