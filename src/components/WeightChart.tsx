@@ -424,7 +424,11 @@ export default function WeightChart() {
                     initial={{ scale: 1 }}
                     whileHover={bounceScale}
                   >
-                    {weightChange.toFixed(1)}lbs
+                    {weightChange === 0 
+                      ? 'No change' 
+                      : weightChange < 0 
+                        ? `You lost ${Math.abs(weightChange).toFixed(1)} lbs` 
+                        : `You gained ${weightChange.toFixed(1)} lbs`}
                   </motion.span>
                 </div>
               </motion.div>

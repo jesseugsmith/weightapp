@@ -49,9 +49,21 @@ export default function LeaderboardCard({
     }
   }, [competitionId, isEnded]);
 
-  const formatWeightChange = (change: number): string => {
-    const sign = change >= 0 ? '+' : '';
-    return `${sign}${change.toFixed(1)} lbs`;
+  const formatWeightChange = (change: number, competitionType: string): string => {
+    const absChange = Math.abs(change);
+    if (change === 0) return `No change`;
+    
+    // For weight loss competitions, positive change means lost weight
+    if (competitionType === 'weight_loss' || competitionType === 'body_fat_loss') {
+      return change > 0 ? `Lost ${absChange.toFixed(1)} lbs` : `Gained ${absChange.toFixed(1)} lbs`;
+    }
+    
+    // For weight gain competitions, positive change means gained weight
+    if (competitionType === 'weight_gain' || competitionType === 'muscle_gain') {
+      return change > 0 ? `Gained ${absChange.toFixed(1)} lbs` : `Lost ${absChange.toFixed(1)} lbs`;
+    }
+    
+    return change > 0 ? `Gained ${absChange.toFixed(1)} lbs` : `Lost ${absChange.toFixed(1)} lbs`;
   };
 
   const formatPercentage = (percentage: number): string => {
@@ -188,7 +200,7 @@ export default function LeaderboardCard({
                     <p className="font-bold text-[var(--accent)]">{displayName}</p>
                     <p className="text-sm mt-1">
                       <span className={`font-medium ${getProgressColor(weightChange, competitionType)}`}>
-                        {formatWeightChange(Math.abs(weightChange))} {getProgressIcon(weightChange, competitionType)}
+                        {formatWeightChange(weightChange, competitionType)} {getProgressIcon(weightChange, competitionType)}
                       </span>
                       <span className="ml-2 text-gray-400">
                         🎯 {formatPercentage(Math.abs(percentage))}

@@ -37,9 +37,17 @@ function UserDetailsModal({ user, roles, onClose, onRoleChange }: UserDetailsMod
         <div className="flex justify-between items-start">
           <div className="flex items-center">
             <div className="mr-4">
-              <div className="h-16 w-16 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-xl">
-                {user.first_name ? user.first_name[0].toUpperCase() : 'U'}
-              </div>
+              {user.photo_url ? (
+                <img 
+                  src={user.photo_url} 
+                  alt={`${user.first_name} ${user.last_name}`}
+                  className="h-16 w-16 rounded-full object-cover"
+                />
+              ) : (
+                <div className="h-16 w-16 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-xl">
+                  {user.first_name ? user.first_name[0].toUpperCase() : 'U'}
+                </div>
+              )}
             </div>
             <h2 className="text-xl font-semibold">{user.first_name} {user.last_name}</h2>
           </div>
@@ -204,13 +212,22 @@ export default function UserManagement() {
       // Combine all user data
       const combinedUsers: UserProfile[] = usersData.map((u: any) => {
         const profile = profilesMap.get(u.id);
+        
+        // Get the photo URL - prioritize profile photo, then user avatar
+        let photoUrl = null;
+        if (profile?.photo_url) {
+          photoUrl = pb.files.getUrl(profile, profile.photo_url);
+        } else if (u.avatar) {
+          photoUrl = pb.files.getUrl(u, u.avatar);
+        }
+        
         return {
           user_id: u.id,
           email: u.email,
           first_name: profile?.first_name || '',
           last_name: profile?.last_name || '',
           nickname: profile?.nickname || '',
-          photo_url: profile?.photo_url || profile?.avatar || u.avatar || null,
+          photo_url: photoUrl,
           roles: rolesByUser.get(u.id) || [],
           permissions: Array.from(permissionsByUser.get(u.id) || [])
         };
@@ -340,9 +357,17 @@ export default function UserManagement() {
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center">
                             <div className="flex-shrink-0">
-                              <div className="h-10 w-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
-                                {user.first_name ? user.first_name[0].toUpperCase() : 'U'}
-                              </div>
+                              {user.photo_url ? (
+                                <img 
+                                  src={user.photo_url} 
+                                  alt={`${user.first_name} ${user.last_name}`}
+                                  className="h-10 w-10 rounded-full object-cover"
+                                />
+                              ) : (
+                                <div className="h-10 w-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
+                                  {user.first_name ? user.first_name[0].toUpperCase() : 'U'}
+                                </div>
+                              )}
                             </div>
                             <div className="ml-4">
                               <div className="text-sm font-medium text-gray-900">
