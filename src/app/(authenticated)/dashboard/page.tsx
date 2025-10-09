@@ -6,6 +6,7 @@ import { useAuth } from '@/hooks/useAuth';
 import TopHeader from '@/components/TopHeader';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { weightService, competitionService, userService } from '@/utils/dataService';
+import { Button } from '@/components/ui/button';
 
 export default function DashboardPage() {
   const { user, loading } = useAuth();
@@ -66,15 +67,15 @@ export default function DashboardPage() {
                 Quick Actions
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <button className="bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg transition-colors">
+                <Button className="bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg transition-colors">
                   Log Weight
-                </button>
-                <button className="bg-secondary-500 hover:bg-secondary-600 text-white px-4 py-2 rounded-lg transition-colors">
+                </Button>
+                <Button className="bg-secondary-500 hover:bg-secondary-600 text-white px-4 py-2 rounded-lg transition-colors">
                   View Competitions
-                </button>
-                <button className="bg-accent-500 hover:bg-accent-600 text-white px-4 py-2 rounded-lg transition-colors">
+                </Button>
+                <Button className="bg-accent-500 hover:bg-accent-600 text-white px-4 py-2 rounded-lg transition-colors">
                   Check Leaderboard
-                </button>
+                </Button>
               </div>
             </div>
           </div>

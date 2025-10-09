@@ -10,6 +10,7 @@ import { weightService, competitionService, userService } from '@/utils/dataServ
 import LoadingSpinner from '@/components/LoadingSpinner';
 import LogWeightModal from '@/components/LogWeightModal';
 import WeightChart from '@/components/WeightChart';
+import { Button } from '@/components/ui/button';
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -161,12 +162,12 @@ export default function Dashboard() {
               </div>
             )}
           </div>
-          <button
+          <Button
             onClick={() => setIsModalOpen(true)}
             className="px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 transition-all duration-200"
           >
             Log Weight
-          </button>
+          </Button>
         </div>
       </div>
 

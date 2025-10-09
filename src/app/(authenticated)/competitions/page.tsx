@@ -13,6 +13,7 @@ import InviteMembersModal from '@/components/InviteMembersModal';
 import JoinCompetitionsModal from '@/components/JoinCompetitionsModal';
 import LeaderboardCard from '@/components/LeaderboardCard';
 import { usePermissions } from '@/contexts/PermissionContext';
+import { Button } from '@/components/ui/button';
 
 interface ParticipantWithUser {
   user: User;
@@ -268,18 +269,18 @@ export default function Competitions() {
       <div className="mb-8 flex justify-between items-center">
         <h1 className="text-2xl font-semibold text-gray-900">Competitions</h1>
         <div className="flex space-x-4">
-          <button
+          <Button
             onClick={() => setIsJoinModalOpen(true)}
             className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
           >
             Join Competition
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={() => setIsModalOpen(true)}
             className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700"
           >
             Create Competition
-          </button>
+          </Button>
         </div>
       </div>
       <div>
@@ -287,12 +288,12 @@ export default function Competitions() {
         {myCompetitions.length === 0 ? (
           <div className="text-center py-12 bg-white rounded-lg shadow">
             <p className="text-gray-500 mb-4">You haven&apos;t joined any competitions yet</p>
-            <button
+            <Button
               onClick={() => setIsJoinModalOpen(true)}
               className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
             >
               Browse Competitions
-            </button>
+            </Button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -321,7 +322,7 @@ export default function Competitions() {
                         </span>
                       )}
                       {participation.expand?.competition_id && canDeleteCompetition(participation.expand.competition_id) && (
-                        <button
+                        <Button
                           onClick={(e) => {
                             e.stopPropagation();
                             setDeleteConfirmId(participation.expand!.competition_id!.id);
@@ -333,7 +334,7 @@ export default function Competitions() {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" 
                               d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                           </svg>
-                        </button>
+                        </Button>
                       )}
                     </div>
                   </div>
@@ -374,7 +375,7 @@ export default function Competitions() {
                   <div className="flex justify-between items-center">
                     {participation.expand?.competition_id?.status === 'upcoming' && (
                       <div className="flex space-x-2">
-                        <button
+                        <Button
                           onClick={() => {
                             setSelectedCompetition(participation.expand!.competition_id!);
                             setIsInviteModalOpen(true);
@@ -382,7 +383,7 @@ export default function Competitions() {
                           className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-indigo-600 hover:text-indigo-500"
                         >
                           Invite Members
-                        </button>
+                        </Button>
                       </div>
                     )}
                   </div>
@@ -450,18 +451,18 @@ export default function Competitions() {
                 Are you sure you want to delete this competition? This action cannot be undone and will remove all participants and data.
               </p>
               <div className="flex justify-center space-x-3">
-                <button
+                <Button
                   onClick={() => setDeleteConfirmId(null)}
                   className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   onClick={() => handleDeleteCompetition(deleteConfirmId)}
                   className="px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700"
                 >
                   Delete
-                </button>
+                </Button>
               </div>
             </div>
           </div>
