@@ -73,12 +73,9 @@ export default function AuthenticatedLayout({
             <Separator orientation="vertical" className="mr-2 h-4" />
               <Breadcrumb>
               <BreadcrumbList>
-                <BreadcrumbItem>
-                  <BreadcrumbLink href="/">Home</BreadcrumbLink>
-                </BreadcrumbItem>
                 {breadcrumbs.map((crumb, index) => (
                   <div key={crumb.href} className="flex items-center gap-2">
-                    <BreadcrumbSeparator />
+                    {index > 0 && <BreadcrumbSeparator />}
                     <BreadcrumbItem>
                       {crumb.isLast ? (
                         <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
