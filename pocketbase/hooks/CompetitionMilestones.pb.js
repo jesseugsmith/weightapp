@@ -136,8 +136,17 @@ onRecordAfterUpdateSuccess((e) => {
     
     // Check if status changed to "active"
     const newStatus = e.record.get("status");
-    const oldStatus = e.record.originalCopy().get("status");
+    let oldStatus = null;
     
+    try {
+        oldStatus = e.record.originalCopy().get("status");
+    } catch (error) {
+        // If originalCopy is not available, we can't determine if status changed
+        // so we'll just check if current status is "active" and proceed cautiously
+        console.log("Could not get original status, proceeding with current status check");
+    }
+    
+    // Only proceed if status is now "active" AND it wasn't before (or if we can't tell)
     if (newStatus === "active" && oldStatus !== "active") {
         console.log(`Competition "${e.record.get('name')}" just started!`);
         
@@ -247,8 +256,16 @@ onRecordAfterUpdateSuccess((e) => {
     
     // Check if status changed to "completed"
     const newStatus = e.record.get("status");
-    const oldStatus = e.record.originalCopy().get("status");
+    let oldStatus = null;
     
+    try {
+        oldStatus = e.record.originalCopy().get("status");
+    } catch (error) {
+        // If originalCopy is not available, we can't determine if status changed
+        console.log("Could not get original status, proceeding with current status check");
+    }
+    
+    // Only proceed if status is now "completed" AND it wasn't before (or if we can't tell)
     if (newStatus === "completed" && oldStatus !== "completed") {
         console.log(`Competition "${e.record.get('name')}" just ended!`);
         
