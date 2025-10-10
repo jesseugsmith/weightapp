@@ -66,20 +66,52 @@ FitClash is a fully open-source weight tracking and competition platform built w
 
 ## 🚀 Features
 
-- **Weight Tracking**: Log daily weights and track progress over time
-- **Competitions**: Create and join weight loss competitions with friends
-- **Leaderboards**: Real-time standings based on percentage weight loss
-- **Role-Based Access**: Admin controls for competition management
-- **OAuth Support**: Sign in with Google or email/password
-- **Real-time Updates**: Live notifications and leaderboard updates
-- **Self-Hosted**: Complete control over your data
+- 📊 **Weight Tracking**: Log and visualize your weight progress
+- 🏆 **Competitions**: Create or join weight loss competitions
+- 📈 **Real-time Leaderboards**: Track your ranking against competitors
+- 👥 **Social Features**: Invite friends and compete together
+- 🔐 **Secure Authentication**: Email/password and OAuth support
+- 📱 **Responsive Design**: Works on desktop and mobile devices
+- 🔔 **Smart Notifications**: Daily email/push notifications via Novu with PocketBase cron hooks
+  - Daily weight log reminders
+  - Progress updates with rankings
+  - Competition milestone alerts
+  - Multi-channel delivery (Email, In-App, Push)
 
 ## 🛠️ Tech Stack
 
-- **Frontend**: Next.js 15, React 19, TypeScript, Tailwind CSS
-- **Backend**: PocketBase (SQLite database + real-time API)
-- **Authentication**: PocketBase Auth (OAuth + email/password)
-- **Deployment**: Self-hosted (single binary)
+- **Frontend**: Next.js 15, React 19, TypeScript
+- **Styling**: Tailwind CSS
+- **Backend**: PocketBase (SQLite)
+- **Authentication**: PocketBase Auth (Email/Password, OAuth)
+- **Notifications**: Novu (Email, Push, In-App)
+- **Charts**: Chart.js, Recharts
+- **UI Components**: Radix UI, Shadcn UI
+- **Animations**: Framer Motion
+
+## 🔔 Notification System
+
+FitClash includes a comprehensive notification system powered by Novu and PocketBase cron hooks:
+
+### Features
+- **Daily Weight Reminders**: Automatic reminders at 9:00 AM for users who haven't logged
+- **Progress Updates**: Daily stats for users who logged their weight
+- **Competition Milestones**: Notifications for competition start, ending soon, and completion
+- **Multi-channel Delivery**: Email, Push notifications, and In-App notifications
+- **Personalized Content**: Includes rank, weight change, and days remaining
+
+### Quick Setup
+1. Sign up at [novu.co](https://novu.co) and get your API key
+2. Configure in PocketBase Admin → Settings → Meta → `novuApiKey`
+3. Set up workflows in Novu dashboard (see [`docs/NOVU_WORKFLOWS.md`](./docs/NOVU_WORKFLOWS.md))
+4. The cron hooks will automatically run daily at 9:00 AM
+
+### Documentation
+- 📖 [Complete Setup Guide](./pocketbase/hooks/NOTIFICATIONS_SETUP.md)
+- 📧 [Email Templates & Workflows](./docs/NOVU_WORKFLOWS.md)
+- 🧪 [Testing Guide](./pocketbase/hooks/README.md#testing)
+
+## 📦 Project Structure
 
 ## 📦 Quick Start
 

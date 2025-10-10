@@ -265,32 +265,29 @@ export default function Competitions() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="w-full px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-8 flex justify-between items-center">
-        <h1 className="text-2xl font-semibold text-gray-900">Competitions</h1>
+        <h1 className="text-2xl font-semibold text-foreground">Competitions</h1>
         <div className="flex space-x-4">
           <Button
             onClick={() => setIsJoinModalOpen(true)}
-            className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+            variant="outline"
           >
             Join Competition
           </Button>
           <Button
             onClick={() => setIsModalOpen(true)}
-            className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700"
           >
             Create Competition
           </Button>
         </div>
       </div>
       <div>
-        <h2 className="text-lg font-medium mb-6">My Competitions</h2>
         {myCompetitions.length === 0 ? (
-          <div className="text-center py-12 bg-white rounded-lg shadow">
-            <p className="text-gray-500 mb-4">You haven&apos;t joined any competitions yet</p>
+          <div className="text-center py-12 bg-card rounded-lg shadow">
+            <p className="text-muted-foreground mb-4">You haven&apos;t joined any competitions yet</p>
             <Button
               onClick={() => setIsJoinModalOpen(true)}
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
             >
               Browse Competitions
             </Button>
@@ -300,12 +297,12 @@ export default function Competitions() {
             {myCompetitions.map((participation) => (
               <div
                 key={participation.id}
-                className="bg-white rounded-lg shadow overflow-hidden hover:shadow-lg transition-shadow duration-200 cursor-pointer"
+                className="bg-card rounded-lg shadow overflow-hidden hover:shadow-lg transition-shadow duration-200 cursor-pointer border border-border"
                 onClick={() => participation.expand?.competition_id && router.push(`/competitions/${participation.expand.competition_id.id}`)}
               >
                 <div className="p-6">
                   <div className="flex items-start justify-between mb-4">
-                    <h3 className="text-lg font-medium text-gray-900 flex-grow">
+                    <h3 className="text-lg font-medium text-card-foreground flex-grow">
                       {participation.expand?.competition_id?.name}
                     </h3>
                     <div className="flex items-center space-x-2 ml-2">
@@ -327,7 +324,9 @@ export default function Competitions() {
                             e.stopPropagation();
                             setDeleteConfirmId(participation.expand!.competition_id!.id);
                           }}
-                          className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                          variant="ghost"
+                          size="sm"
+                          className="p-1 text-muted-foreground hover:text-destructive transition-colors"
                           title="Delete competition"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -339,7 +338,7 @@ export default function Competitions() {
                     </div>
                   </div>
                   
-                  <p className="text-sm text-gray-500 mb-4 line-clamp-2">
+                  <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
                     {participation.expand?.competition_id?.description || 'No description provided'}
                   </p>
                   

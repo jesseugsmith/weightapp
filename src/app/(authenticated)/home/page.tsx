@@ -142,32 +142,8 @@ export default function Dashboard() {
                 return `${greeting}${profile?.first_name ? `, ${profile.first_name}` : ''}`;
               })()}
             </h1>
-            {latestWeight && (
-              <div className="mt-4">
-                <div className="flex flex-col space-y-2">
-                  <div className="text-lg">
-                    <p className="text-gray-400">Current weight:</p>
-                    <p className="font-semibold text-blue-400">{latestWeight.toFixed(1)} lbs</p>
-                  </div>
-                  {startingWeight && (
-                    <div className="text-lg">
-                      <p className="text-gray-400">Weight lost:</p>
-                      <p className={totalWeightLoss && totalWeightLoss > 0 ? "font-semibold text-green-400" : "font-semibold text-gray-300"}>
-                        {totalWeightLoss ? `${totalWeightLoss.toFixed(1)} lbs` : "0 lbs"}
-                        {totalWeightLoss && totalWeightLoss > 0 && " 🎉"}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+            
           </div>
-          <Button
-            onClick={() => setIsModalOpen(true)}
-            className="px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 transition-all duration-200"
-          >
-            Log Weight
-          </Button>
         </div>
       </div>
 

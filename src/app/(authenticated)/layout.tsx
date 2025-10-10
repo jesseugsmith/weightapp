@@ -5,7 +5,15 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Sidebar from '@/components/Sidebar';
 import TopHeader from '@/components/TopHeader';
-
+import { AppSidebar } from '@/components/app-sidebar';
+import { Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbSeparator, BreadcrumbPage } from '@/components/ui/breadcrumb';
+import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
+import { Separator } from '@radix-ui/react-separator';
+import { usePathname } from "next/navigation"
+import { useMemo } from "react"
+import NotificationInbox from '@/components/NotificationInbox';
+import { Toaster } from '@/components/ui/sonner';
+import { useNovuPush } from '@/hooks/useNovuPush';
 export default function AuthenticatedLayout({
   children,
 }: {
@@ -13,8 +21,28 @@ export default function AuthenticatedLayout({
 }) {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  useNovuPush();
+  const breadcrumbs = useMemo(() => {
+    const segments = pathname.split('/').filter(Boolean);
+    
+    return segments.map((segment, index) => {
+      const href = '/' + segments.slice(0, index + 1).join('/');
+      const label = segment
+        .split('-')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+      
+      return {
+        href,
+        label,
+        isLast: index === segments.length - 1
+      };
+    });
+  }, [pathname]);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -24,8 +52,8 @@ export default function AuthenticatedLayout({
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900">
-        <div className="text-xl text-white">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-xl text-foreground">Loading...</div>
       </div>
     );
   }
@@ -34,32 +62,47 @@ export default function AuthenticatedLayout({
     return null;
   }
 
+  
   return (
-    <div className="min-h-screen bg-gray-900 flex">
-      {/* Sidebar */}
-      <Sidebar 
-        isOpen={sidebarOpen} 
-        setIsOpen={setSidebarOpen}
-        isCollapsed={sidebarCollapsed}
-        setIsCollapsed={setSidebarCollapsed}
-      />
-      
-      {/* Main content area */}
-      <div className={`flex-1 flex flex-col transition-all duration-300 ${
-        sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'
-      }`}>
-        {/* Top header */}
-        <TopHeader 
-          onMenuClick={() => setSidebarOpen(!sidebarOpen)}
-          onCollapseToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
-          isCollapsed={sidebarCollapsed}
-        />
-        
-        {/* Page content */}
-        <main className="flex-1 overflow-auto">
+        <SidebarProvider>
+      <AppSidebar />
+      <SidebarInset>
+        <header className="flex h-16 shrink-0 items-center gap-2 justify-between px-4">
+          <div className="flex items-center gap-2">
+            <SidebarTrigger className="-ml-1" />
+            <Separator orientation="vertical" className="mr-2 h-4" />
+              <Breadcrumb>
+              <BreadcrumbList>
+                <BreadcrumbItem>
+                  <BreadcrumbLink href="/">Home</BreadcrumbLink>
+                </BreadcrumbItem>
+                {breadcrumbs.map((crumb, index) => (
+                  <div key={crumb.href} className="flex items-center gap-2">
+                    <BreadcrumbSeparator />
+                    <BreadcrumbItem>
+                      {crumb.isLast ? (
+                        <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
+                      ) : (
+                        <BreadcrumbLink href={crumb.href}>
+                          {crumb.label}
+                        </BreadcrumbLink>
+                      )}
+                    </BreadcrumbItem>
+                  </div>
+                ))}
+              </BreadcrumbList>
+            </Breadcrumb>
+          </div>
+          <div className="flex items-center">
+            <NotificationInbox subscriberId={user?.id || 'guest-user'} />
+          </div>
+        </header>
+        <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
           {children}
-        </main>
-      </div>
-    </div>
+        </div>
+
+      </SidebarInset>
+        <Toaster />
+    </SidebarProvider>
   );
 }

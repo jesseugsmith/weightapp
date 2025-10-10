@@ -3,37 +3,34 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { pb } from '@/lib/pocketbase';
 import { useAuth } from '@/hooks/useAuth';
-import { Line } from 'react-chartjs-2';
-import { motion, AnimatePresence } from 'framer-motion';
-import { fadeInUp, popIn, bounceScale } from '@/utils/animations';
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"
 import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend
-} from 'chart.js';
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import {
+  ChartConfig,
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart"
 
 type TimeFrame = '1W' | '1M' | '3M' | '6M' | '1Y' | 'ALL';
-
-// Register ChartJS components
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend
-);
 
 interface WeightEntry {
   date: string;
   weight: number;
 }
+
+const chartConfig = {
+  weight: {
+    label: "Weight",
+    color: "#00D4FF",
+  },
+} satisfies ChartConfig
 
 export default function WeightChart() {
   const { user } = useAuth();
@@ -69,35 +66,40 @@ export default function WeightChart() {
   }, [user]);
 
   useEffect(() => {
+    let unsubscribe: (() => void) | null = null;
+
     const fetchData = async () => {
-      if (!user) return;
+      if (!user) {
+        setWeightData([]);
+        return;
+      }
 
       try {
         // Set up real-time subscription with PocketBase
-        let unsubscribe: (() => void) | null = null;
-        
         pb.collection('weight_entries').subscribe('*', (e) => {
           if (e.record.user_id === user.id) {
             fetchWeightData(); // Refetch when data changes
           }
         }).then((unsub) => {
           unsubscribe = unsub;
+        }).catch((error) => {
+          console.error('Error subscribing to weight entries:', error);
         });
 
         // Initial data fetch
         await fetchWeightData();
-
-        return () => {
-          if (unsubscribe) {
-            unsubscribe();
-          }
-        };
       } catch (err) {
         console.error('Error setting up real-time subscription:', err);
       }
     };
 
     fetchData();
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
   }, [user, fetchWeightData]);
 
   const filteredData = useMemo(() => {
@@ -134,6 +136,13 @@ export default function WeightChart() {
     return weightData.filter(entry => new Date(entry.date) >= cutoffDate);
   }, [weightData, timeFrame, isCustomDate, startDate, endDate]);
 
+  const chartData = useMemo(() => {
+    return filteredData.map(entry => ({
+      date: new Date(entry.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      weight: entry.weight,
+    }));
+  }, [filteredData]);
+
   const timeFrameButtons: { label: string; value: TimeFrame }[] = [
     { label: '1W', value: '1W' },
     { label: '1M', value: '1M' },
@@ -144,166 +153,67 @@ export default function WeightChart() {
   ];
 
   if (loading) return (
-    <motion.div
-      className="h-64 flex items-center justify-center"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.5 }}
-    >
-      <motion.div
-        animate={{
-          scale: [1, 1.2, 1],
-          rotate: [0, 360]
-        }}
-        transition={{
-          duration: 1.5,
-          repeat: Infinity,
-          ease: "linear"
-        }}
-        className="w-12 h-12 border-4 border-indigo-500 rounded-full border-t-transparent"
-      />
-    </motion.div>
+    <Card>
+      <CardContent className="flex items-center justify-center h-64">
+        <div className="w-12 h-12 border-4 border-primary rounded-full border-t-transparent animate-spin" />
+      </CardContent>
+    </Card>
   );
 
   if (error) return (
-    <motion.div
-      className="text-red-500"
-      initial="hidden"
-      animate="visible"
-      variants={fadeInUp}
-    >
-      {error}
-    </motion.div>
+    <Card>
+      <CardContent className="flex items-center justify-center h-64">
+        <p className="text-destructive">{error}</p>
+      </CardContent>
+    </Card>
   );
 
   if (weightData.length === 0) {
     return (
-      <motion.div
-        className="h-64 flex flex-col items-center justify-center text-gray-500"
-        initial="hidden"
-        animate="visible"
-        variants={fadeInUp}
-      >
-        <motion.p variants={popIn}>No weight entries yet</motion.p>
-        <motion.p
-          className="text-sm mt-2"
-          variants={popIn}
-          transition={{ delay: 0.2 }}
-        >
-          Log your weight to start tracking your progress
-        </motion.p>
-      </motion.div>
+      <Card>
+        <CardContent className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+          <p>No weight entries yet</p>
+          <p className="text-sm mt-2">Log your weight to start tracking your progress</p>
+        </CardContent>
+      </Card>
     );
   }
-
-  const data = {
-    labels: filteredData.map(entry => new Date(entry.date).toLocaleDateString()),
-    datasets: [
-      {
-        label: 'Weight (lbs)',
-        data: filteredData.map(entry => entry.weight),
-        fill: false,
-        borderColor: 'rgb(75, 192, 192)',
-        tension: 0.1,
-        pointBackgroundColor: 'rgb(75, 192, 192)',
-        pointRadius: 4,
-      }
-    ]
-  };
-
-  const options = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        position: 'top' as const,
-      },
-      title: {
-        display: true,
-        text: 'Weight Progress'
-      },
-      tooltip: {
-        callbacks: {
-          label: function(context: { parsed: { y: number } }) {
-            return `Weight: ${context.parsed.y}lbs`;
-          }
-        }
-      }
-    },
-    scales: {
-      y: {
-        beginAtZero: false,
-        title: {
-          display: true,
-          text: 'Weight (lbs)'
-        }
-      },
-      x: {
-        title: {
-          display: true,
-          text: 'Date'
-        }
-      }
-    }
-  };
 
   const weightChange = filteredData.length > 0
     ? filteredData[filteredData.length - 1].weight - filteredData[0].weight
     : 0;
 
   return (
-    <motion.div
-      className="bg-white p-6 rounded-lg shadow"
-      initial="hidden"
-      animate="visible"
-      variants={fadeInUp}
-    >
-      <motion.div
-        className="flex flex-wrap items-center justify-between mb-4 gap-4"
-        variants={{
-          visible: {
-            transition: {
-              staggerChildren: 0.1
-            }
-          }
-        }}
-      >
-        <motion.div 
-          className="flex space-x-2"
-          variants={{
-            hidden: { opacity: 0, x: -20 },
-            visible: { opacity: 1, x: 0 }
-          }}
-        >
-          {timeFrameButtons.map(({ label, value }) => (
-            <motion.button
-              key={value}
-              onClick={() => {
-                setTimeFrame(value);
-                setIsCustomDate(false);
-              }}
-              className={`px-3 py-1 rounded text-sm font-medium transform transition-colors ${
-                timeFrame === value && !isCustomDate
-                  ? 'bg-[var(--accent)] text-white shadow-lg'
-                  : 'bg-gray-100 text-gray-700 hover:bg-[var(--accent-glow)] hover:text-[var(--accent)]'
-              }`}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              variants={popIn}
-            >
-              {label}
-            </motion.button>
-          ))}
-        </motion.div>
-
-        <motion.div 
-          className="flex items-center space-x-4"
-          variants={{
-            hidden: { opacity: 0, x: 20 },
-            visible: { opacity: 1, x: 0 }
-          }}
-        >
-          <motion.div className="flex items-center space-x-2">
+    <Card>
+      <CardHeader>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <CardTitle>Weight Progress</CardTitle>
+            <CardDescription>Track your weight over time</CardDescription>
+          </div>
+          
+          <div className="flex space-x-2">
+            {timeFrameButtons.map(({ label, value }) => (
+              <button
+                key={value}
+                onClick={() => {
+                  setTimeFrame(value);
+                  setIsCustomDate(false);
+                }}
+                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                  timeFrame === value && !isCustomDate
+                    ? 'bg-primary text-primary-foreground shadow-lg'
+                    : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        
+        <div className="flex items-center space-x-4 mt-4">
+          <div className="flex items-center space-x-2">
             <input
               type="date"
               value={startDate}
@@ -311,9 +221,9 @@ export default function WeightChart() {
                 setStartDate(e.target.value);
                 setIsCustomDate(true);
               }}
-              className="px-2 py-1 rounded border border-gray-300 bg-white text-sm"
+              className="px-2 py-1 rounded border border-input bg-background text-sm"
             />
-            <span className="text-[var(--accent)]">to</span>
+            <span className="text-muted-foreground">to</span>
             <input
               type="date"
               value={endDate}
@@ -321,121 +231,100 @@ export default function WeightChart() {
                 setEndDate(e.target.value);
                 setIsCustomDate(true);
               }}
-              className="px-2 py-1 rounded border border-gray-300 bg-white text-sm"
+              className="px-2 py-1 rounded border border-input bg-background text-sm"
             />
-          </motion.div>
+          </div>
           {isCustomDate && (
-            <motion.button
+            <button
               onClick={() => {
                 setIsCustomDate(false);
                 setStartDate('');
                 setEndDate('');
                 setTimeFrame('1M');
               }}
-              className="text-sm text-[var(--accent)] hover:text-[var(--accent-glow)]"
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.8 }}
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
+              className="text-sm text-primary hover:text-primary/80"
             >
               Reset
-            </motion.button>
+            </button>
           )}
-        </motion.div>
-      </motion.div>
-
-      <motion.div
-        className="h-64 relative"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-      >
-        <motion.div
-          className="absolute inset-0"
-          initial="hidden"
-          animate="visible"
-          variants={{
-            hidden: { opacity: 0, scale: 0.8 },
-            visible: { 
-              opacity: 1, 
-              scale: 1,
-              transition: {
-                type: "spring",
-                stiffness: 100,
-                damping: 20
-              }
-            }
-          }}
-        >
-          <Line data={data} options={options} />
-        </motion.div>
-        
-        {filteredData.length === 0 && (
-          <motion.div
-            className="absolute inset-0 flex items-center justify-center text-gray-500"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.3 }}
-          >
+        </div>
+      </CardHeader>
+      <CardContent>
+        {chartData.length === 0 ? (
+          <div className="flex items-center justify-center h-64 text-muted-foreground">
             No data available for selected date range
-          </motion.div>
-        )}
-      </motion.div>
-
-      <AnimatePresence>
-        {filteredData.length > 0 && (
-          <motion.div
-            className="mt-4 text-center text-sm"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-          >
-            <motion.div
-              className="flex justify-center space-x-8"
-              variants={{
-                visible: {
-                  transition: {
-                    staggerChildren: 0.1
-                  }
-                }
-              }}
-            >
-              <motion.div
-                variants={popIn}
-                className="p-3 rounded-lg bg-gray-50"
+          </div>
+        ) : (
+          <>
+            <ChartContainer config={chartConfig} className="h-64 w-full">
+              <AreaChart
+                accessibilityLayer
+                data={chartData}
+                margin={{
+                  left: 12,
+                  right: 12,
+                }}
               >
-                <span className="font-medium">Starting Weight:</span>{' '}
-                <span className="text-indigo-600">{filteredData[0].weight}lbs</span>
-              </motion.div>
+                <CartesianGrid vertical={false} />
+                <XAxis
+                  dataKey="date"
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  tickFormatter={(value) => value}
+                />
+                <YAxis
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  tickFormatter={(value) => `${value} lbs`}
+                />
+                <ChartTooltip
+                  cursor={false}
+                  content={<ChartTooltipContent indicator="line" />}
+                />
+                <Area
+                  dataKey="weight"
+                  type="natural"
+                  fill="var(--color-weight)"
+                  fillOpacity={0.4}
+                  stroke="var(--color-weight)"
+                  stackId="a"
+                />
+              </AreaChart>
+            </ChartContainer>
 
-              <motion.div
-                variants={popIn}
-                className="p-3 rounded-lg bg-gray-50 flex items-center gap-6"
-              >
-                <div>
-                  <span className="font-medium">Current Weight:</span>{' '}
-                  <span className="text-indigo-600">{filteredData[filteredData.length - 1].weight}lbs</span>
+            {filteredData.length > 0 && (
+              <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-4 rounded-lg bg-muted/50">
+                  <span className="text-sm text-muted-foreground">Starting Weight</span>
+                  <p className="text-2xl font-bold text-foreground">{filteredData[0].weight} lbs</p>
                 </div>
-                <div className="flex items-center">
-                  <span className="font-medium">Total Change:</span>{' '}
-                  <motion.span
-                    className={weightChange <= 0 ? "text-green-500 ml-1" : "text-red-500 ml-1"}
-                    initial={{ scale: 1 }}
-                    whileHover={bounceScale}
-                  >
+
+                <div className="p-4 rounded-lg bg-muted/50">
+                  <span className="text-sm text-muted-foreground">Current Weight</span>
+                  <p className="text-2xl font-bold text-foreground">
+                    {filteredData[filteredData.length - 1].weight} lbs
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-lg bg-muted/50">
+                  <span className="text-sm text-muted-foreground">Total Change</span>
+                  <p className={`text-2xl font-bold ${
+                    weightChange <= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
+                  }`}>
                     {weightChange === 0 
                       ? 'No change' 
                       : weightChange < 0 
-                        ? `You lost ${Math.abs(weightChange).toFixed(1)} lbs` 
-                        : `You gained ${weightChange.toFixed(1)} lbs`}
-                  </motion.span>
+                        ? `↓ ${Math.abs(weightChange).toFixed(1)} lbs` 
+                        : `↑ ${weightChange.toFixed(1)} lbs`}
+                  </p>
                 </div>
-              </motion.div>
-            </motion.div>
-          </motion.div>
+              </div>
+            )}
+          </>
         )}
-      </AnimatePresence>
-    </motion.div>
+      </CardContent>
+    </Card>
   );
 }

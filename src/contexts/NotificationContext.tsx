@@ -40,6 +40,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         }
       }).then((unsub) => {
         unsubscribe = unsub;
+      }).catch((error) => {
+        console.error('Error subscribing to notifications:', error);
       });
 
       return () => {
@@ -47,6 +49,9 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           unsubscribe();
         }
       };
+    } else {
+      // Clear notifications when user logs out
+      setNotifications([]);
     }
   }, [user]);
 

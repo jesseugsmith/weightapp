@@ -1,6 +1,7 @@
 'use client';
 
-import NotificationBell from './NotificationBell';
+import NotificationInbox from './NotificationInbox';
+import { useAuth } from '@/hooks/useAuth';
 
 interface TopHeaderProps {
   onMenuClick: () => void;
@@ -9,6 +10,8 @@ interface TopHeaderProps {
 }
 
 export default function TopHeader({ onMenuClick, onCollapseToggle, isCollapsed }: TopHeaderProps) {
+  const { user, loading } = useAuth();
+
   return (
     <header className="h-16 bg-gray-900/95 backdrop-blur-md border-b border-gray-700 flex items-center justify-between px-4 lg:px-6">
       {/* Left side - Menu/Collapse button */}
@@ -42,7 +45,7 @@ export default function TopHeader({ onMenuClick, onCollapseToggle, isCollapsed }
 
       {/* Right side - Notifications */}
       <div className="flex items-center">
-        <NotificationBell />
+        <NotificationInbox subscriberId={user?.id || 'guest-user'} />
       </div>
     </header>
   );
