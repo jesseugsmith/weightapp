@@ -216,8 +216,8 @@ export default function LeaderboardCard({
         <>
           {/* Top 3 Podium */}
           {topThree.length > 0 && (
-            <div className="mb-8 w-full bg-muted/30 py-12">
-              <div className="flex items-end justify-center gap-4 max-w-4xl mx-auto px-4">
+            <div className="mb-8 w-full bg-muted/30 py-8 md:py-12">
+              <div className="flex items-end justify-center gap-2 md:gap-4 max-w-4xl mx-auto px-2 md:px-4">
                 {podiumOrder.map((standing) => {
                   if (!standing) return null;
                   
@@ -232,13 +232,13 @@ export default function LeaderboardCard({
                   // Find prize for this rank
                   const prize = prizes.find(p => p.rank === standing.rank);
                   
-                  const heightClass = standing.rank === 1 ? 'h-64' : standing.rank === 2 ? 'h-56' : 'h-48';
-                  const trophySize = standing.rank === 1 ? 'text-6xl' : 'text-5xl';
+                  const heightClass = standing.rank === 1 ? 'h-56 md:h-64' : standing.rank === 2 ? 'h-48 md:h-56' : 'h-40 md:h-48';
+                  const trophySize = standing.rank === 1 ? 'text-4xl md:text-6xl' : 'text-3xl md:text-5xl';
                   
                   return (
-                    <div key={standing.id} className="flex flex-col items-center" style={{ width: '180px' }}>
+                    <div key={standing.id} className="flex flex-col items-center w-[110px] md:w-[180px]">
                       {/* Trophy */}
-                      <div className={`${trophySize} mb-3`}>
+                      <div className={`${trophySize} mb-2 md:mb-3`}>
                         {standing.rank === 1 && '🏆'}
                         {standing.rank === 2 && '🥈'}
                         {standing.rank === 3 && '🥉'}
@@ -251,38 +251,38 @@ export default function LeaderboardCard({
                           : standing.rank === 2
                           ? 'from-gray-400/20 to-gray-500/10 border-gray-400/50'
                           : 'from-amber-600/20 to-amber-700/10 border-amber-600/50'
-                      } border-2 rounded-lg p-4 flex flex-col justify-between`}>
+                      } border-2 rounded-lg p-2 md:p-4 flex flex-col justify-between`}>
                         <div className="text-center">
-                          <div className={`text-3xl font-bold mb-2 ${
+                          <div className={`text-2xl md:text-3xl font-bold mb-1 md:mb-2 ${
                             standing.rank === 1 ? 'text-yellow-600 dark:text-yellow-500' 
                             : standing.rank === 2 ? 'text-gray-600 dark:text-gray-400' 
                             : 'text-amber-600 dark:text-amber-500'
                           }`}>
                             #{standing.rank}
                           </div>
-                          <div className="font-bold text-foreground text-sm mb-3 line-clamp-2">
+                          <div className="font-bold text-foreground text-xs md:text-sm mb-2 md:mb-3 line-clamp-2 px-1">
                             {displayName}
                           </div>
                           
                           {/* Prize */}
                           {prize && (
-                            <div className="mb-3 pb-3 border-b border-border/50">
+                            <div className="mb-2 md:mb-3 pb-2 md:pb-3 border-b border-border/50">
                               {prize.currency === 'PERCENT' ? (
                                 <>
-                                  <div className="text-lg font-bold text-green-600 dark:text-green-500">
-                                    ${calculatePrizeAmount(prize.value || 0).toFixed(2)}
+                                  <div className="text-sm md:text-lg font-bold text-green-600 dark:text-green-500">
+                                    ${calculatePrizeAmount(prize.value || 0).toFixed(0)}
                                   </div>
-                                  <div className="text-xs text-muted-foreground mt-1">
-                                    {prize.value}% of prize pool
+                                  <div className="text-[10px] md:text-xs text-muted-foreground mt-1 hidden md:block">
+                                    {prize.value}% of pool
                                   </div>
                                 </>
                               ) : (
                                 <>
-                                  <div className="text-lg font-bold text-green-600 dark:text-green-500">
+                                  <div className="text-sm md:text-lg font-bold text-green-600 dark:text-green-500">
                                     {prize.value ? `$${prize.value.toLocaleString()}` : 'TBD'}
                                   </div>
                                   {prize.description && (
-                                    <div className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                                    <div className="text-[10px] md:text-xs text-muted-foreground mt-1 line-clamp-2 hidden md:block">
                                       {prize.description}
                                     </div>
                                   )}
@@ -292,15 +292,15 @@ export default function LeaderboardCard({
                           )}
                         </div>
                         
-                        <div className="text-center space-y-2">
-                          <div className={`text-lg font-bold ${getProgressColor(weightChange, competitionType)}`}>
-                            {formatWeightChange(weightChange, competitionType)}
+                        <div className="text-center space-y-1 md:space-y-2">
+                          <div className={`text-sm md:text-lg font-bold ${getProgressColor(weightChange, competitionType)}`}>
+                            {Math.abs(weightChange).toFixed(1)} lbs
                           </div>
-                          <div className="text-sm text-muted-foreground">
+                          <div className="text-xs md:text-sm text-muted-foreground">
                             {formatPercentage(percentage, competitionType)}
                           </div>
                           {standing.last_weight_entry && (
-                            <div className="text-xs text-muted-foreground">
+                            <div className="text-[10px] md:text-xs text-muted-foreground hidden md:block">
                               {new Date(standing.last_weight_entry).toLocaleDateString()}
                             </div>
                           )}
