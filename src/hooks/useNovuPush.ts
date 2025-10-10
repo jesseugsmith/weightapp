@@ -102,19 +102,13 @@ export function useNovuPush() {
 
 /**
  * Register the subscriber and their push subscription with Novu
+ * Now uses server-side API endpoints for security
  */
 async function registerSubscriberWithNovu(
   user: any, // User type from @/types/database.types
   subscription: PushSubscription
 ) {
   try {
-    const novuAppId = process.env.NEXT_PUBLIC_NOVU_APPLICATION_IDENTIFIER;
-    
-    if (!novuAppId) {
-      console.error('NEXT_PUBLIC_NOVU_APPLICATION_IDENTIFIER not configured');
-      return;
-    }
-
     console.log('Registering subscriber with Novu:', user.id);
 
     // Fetch profile data to get first_name and last_name
@@ -135,41 +129,28 @@ async function registerSubscriberWithNovu(
       lastName = user.last_name || '';
     }
 
-    // Build full name from first_name and last_name
-    const fullName = [firstName, lastName].filter(Boolean).join(' ').trim() || user.email.split('@')[0];
-
-    // Using Novu's public API to register subscriber
-    // Note: For production, you might want to proxy this through your backend
-    const response = await fetch(`https://api.novu.co/v1/subscribers/${user.id}`, {
-      method: 'PUT',
+    // Register subscriber via server-side API (secure)
+    const subscriberResponse = await fetch('/api/novu/register-subscriber', {
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        // Note: In production, this should be done server-side
-        // For now, we're relying on Novu's public endpoints
       },
       body: JSON.stringify({
-        subscriberId: user.id,
         email: user.email,
         firstName: firstName,
         lastName: lastName,
-        data: {
-          // Additional user metadata
-          registeredAt: new Date().toISOString(),
-          fullName: fullName,
-        }
       })
     });
 
-    if (!response.ok) {
-      console.error('Failed to register subscriber:', await response.text());
+    if (!subscriberResponse.ok) {
+      const error = await subscriberResponse.text();
+      console.error('Failed to register subscriber:', error);
       return;
     }
 
     console.log('Subscriber registered with Novu');
 
-    // Now register the push credentials
-    // Note: This typically requires backend API key, so you may need to 
-    // create an API endpoint in your app to handle this
+    // Now register the push credentials via server-side API
     await registerPushCredentials(user.id, subscription);
 
   } catch (error) {
@@ -178,8 +159,7 @@ async function registerSubscriberWithNovu(
 }
 
 /**
- * Register push credentials with Novu
- * This should ideally be done via your backend API
+ * Register push credentials with Novu via server-side API
  */
 async function registerPushCredentials(
   userId: string,
@@ -191,7 +171,7 @@ async function registerPushCredentials(
     
     console.log('Registering push credentials for subscriber:', userId);
 
-    // Option 1: If you have a backend endpoint
+    // Use server-side API endpoint for secure registration
     const response = await fetch('/api/novu/register-push', {
       method: 'POST',
       headers: {
@@ -206,12 +186,12 @@ async function registerPushCredentials(
     if (response.ok) {
       console.log('Push credentials registered successfully');
     } else {
-      console.error('Failed to register push credentials:', await response.text());
+      const error = await response.text();
+      console.error('Failed to register push credentials:', error);
     }
 
   } catch (error) {
     console.error('Failed to register push credentials:', error);
-    console.log('You may need to create /api/novu/register-push endpoint');
   }
 }
 
@@ -236,36 +216,30 @@ export async function unsubscribeFromPush() {
 
 /**
  * Update subscriber information in Novu (call when profile is updated)
- * @param userId - The user's ID (subscriber ID)
+ * Now uses server-side API for security
+ * @param userId - The user's ID (subscriber ID) - not used, as server gets it from session
  * @param email - The user's email
  * @param firstName - The user's first name
  * @param lastName - The user's last name
  */
 export async function updateNovuSubscriber(
-  userId: string,
+  userId: string, // Kept for backwards compatibility but not sent to server
   email: string,
   firstName?: string,
   lastName?: string
 ) {
   try {
-    console.log('Updating Novu subscriber:', userId);
+    console.log('Updating Novu subscriber via server-side API');
     
-    const fullName = [firstName, lastName].filter(Boolean).join(' ').trim() || email.split('@')[0];
-    
-    const response = await fetch(`https://api.novu.co/v1/subscribers/${userId}`, {
+    const response = await fetch('/api/novu/update-subscriber', {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        subscriberId: userId,
         email: email,
         firstName: firstName || '',
         lastName: lastName || '',
-        data: {
-          fullName: fullName,
-          updatedAt: new Date().toISOString(),
-        }
       })
     });
 
@@ -273,7 +247,8 @@ export async function updateNovuSubscriber(
       console.log('Novu subscriber updated successfully');
       return true;
     } else {
-      console.error('Failed to update Novu subscriber:', await response.text());
+      const error = await response.text();
+      console.error('Failed to update Novu subscriber:', error);
       return false;
     }
   } catch (error) {

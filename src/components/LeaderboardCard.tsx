@@ -253,13 +253,6 @@ export default function LeaderboardCard({
                           : 'from-amber-600/20 to-amber-700/10 border-amber-600/50'
                       } border-2 rounded-lg p-2 md:p-4 flex flex-col justify-between`}>
                         <div className="text-center">
-                          <div className={`text-2xl md:text-3xl font-bold mb-1 md:mb-2 ${
-                            standing.rank === 1 ? 'text-yellow-600 dark:text-yellow-500' 
-                            : standing.rank === 2 ? 'text-gray-600 dark:text-gray-400' 
-                            : 'text-amber-600 dark:text-amber-500'
-                          }`}>
-                            #{standing.rank}
-                          </div>
                           <div className="font-bold text-foreground text-xs md:text-sm mb-2 md:mb-3 line-clamp-2 px-1">
                             {displayName}
                           </div>

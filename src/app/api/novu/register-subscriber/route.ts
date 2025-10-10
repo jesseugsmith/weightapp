@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyAuth } from '@/lib/serverAuth';
 
 /**
- * API endpoint to register push notification credentials with Novu
- * This proxies the request to Novu's API using the server-side API key
+ * API endpoint to register/update a subscriber with Novu
+ * This is called during user registration or profile updates
  */
 export async function POST(request: NextRequest) {
   try {
@@ -16,19 +16,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { userId, subscription } = await request.json();
+    const { email, firstName, lastName } = await request.json();
 
-    if (!userId || !subscription) {
+    // Verify the email matches the authenticated user
+    if (email !== user.email) {
       return NextResponse.json(
-        { error: 'Missing userId or subscription' },
-        { status: 400 }
-      );
-    }
-
-    // Verify the userId matches the authenticated user
-    if (userId !== user.id) {
-      return NextResponse.json(
-        { error: 'Forbidden: Cannot register push for another user' },
+        { error: 'Forbidden: Email mismatch' },
         { status: 403 }
       );
     }
@@ -44,21 +37,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('Registering push credentials for subscriber:', userId);
+    console.log('Registering/updating subscriber with Novu:', user.id);
 
-    // Register push credentials with Novu
+    // Build full name
+    const fullName = [firstName, lastName].filter(Boolean).join(' ').trim() || email.split('@')[0];
+
+    // Register/update subscriber with Novu
     const response = await fetch(
-      `https://api.novu.co/v1/subscribers/${userId}/credentials`,
+      `https://api.novu.co/v1/subscribers`,
       {
-        method: 'PUT',
+        method: 'POST',
         headers: {
           'Authorization': `ApiKey ${novuApiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          providerId: 'web-push', // Web Push API (works across all browsers)
-          credentials: {
-            deviceTokens: [JSON.stringify(subscription)]
+          subscriberId: user.id,
+          email: email,
+          firstName: firstName || '',
+          lastName: lastName || '',
+          data: {
+            fullName: fullName,
+            registeredAt: new Date().toISOString(),
           }
         })
       }
@@ -74,16 +74,16 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await response.json();
-    console.log('Push credentials registered successfully for:', userId);
+    console.log('Subscriber registered/updated successfully:', user.id);
 
     return NextResponse.json({
       success: true,
-      message: 'Push credentials registered',
+      message: 'Subscriber registered with Novu',
       data
     });
 
   } catch (error) {
-    console.error('Error registering push credentials:', error);
+    console.error('Error registering subscriber:', error);
     return NextResponse.json(
       { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
