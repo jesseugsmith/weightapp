@@ -153,7 +153,7 @@ export default function Dashboard() {
       </div>
 
       {/* Active Competitions */}
-      <div className="bg-gray-800 border border-gray-700 shadow rounded-lg p-6">
+      <div className="border bg-card shadow rounded-lg p-6">
         <h2 className="text-lg font-medium text-white mb-4">Active Competitions</h2>
         {activeCompetitions.length === 0 ? (
           <div className="text-center py-6">

@@ -114,111 +114,153 @@ export default function CompetitionDetails() {
   if (!competition) return <div>Competition not found</div>;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-8">
-        <div className="flex justify-between items-start">
-          <div>
-            <h1 className="text-3xl font-semibold text-gray-900">{competition.name}</h1>
-            <p className="mt-2 text-lg text-gray-600">{competition.description}</p>
-            
-            <div className="mt-4 flex items-center text-sm text-gray-500">
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" 
-                  d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              {new Date(competition.start_date).toLocaleDateString()} - {new Date(competition.end_date).toLocaleDateString()}
+    <div className="w-full px-4 sm:px-6 lg:px-8 py-8">
+      {/* Header Section */}
+      <div className="mb-8 max-w-7xl mx-auto">
+        <div className="bg-card border border-border rounded-lg shadow-sm p-8">
+          <div className="flex flex-col lg:flex-row lg:justify-between lg:items-start gap-6">
+            <div className="flex-1">
+              <h1 className="text-4xl font-bold text-foreground mb-3">
+                {competition.name}
+              </h1>
+              <p className="text-lg text-muted-foreground leading-relaxed">{competition.description}</p>
+              
+              {/* Competition Info Grid */}
+              <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="flex items-center gap-3 text-sm">
+                  <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
+                    <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" 
+                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground text-xs">Competition Period</p>
+                    <p className="text-foreground font-semibold">
+                      {new Date(competition.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - {new Date(competition.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-3 text-sm">
+                  <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
+                    <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground text-xs">Competition Type</p>
+                    <p className="text-foreground font-semibold capitalize">
+                      {competition.competition_type?.replace(/_/g, ' ') || 'Weight Loss'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Competition Status Badge */}
+              <div className="mt-6">
+                <span className={`inline-flex items-center px-4 py-2 rounded-md text-sm font-semibold ${
+                  competition.status === 'completed' 
+                    ? 'bg-green-500/10 text-green-600 border border-green-500/20'
+                    : competition.status === 'started'
+                    ? 'bg-blue-500/10 text-blue-600 border border-blue-500/20'
+                    : 'bg-muted text-muted-foreground border border-border'
+                }`}>
+                  {competition.status.charAt(0).toUpperCase() + competition.status.slice(1)}
+                </span>
+              </div>
             </div>
+
+            {/* Action Buttons */}
+            {(isAdmin || (user && competition.created_by === user.id)) && (
+              <div className="flex flex-col gap-3 lg:min-w-[200px]">
+                {user && competition.created_by === user.id && competition.status === 'draft' && (
+                  <button
+                    onClick={handleStartCompetition}
+                    disabled={startingCompetition}
+                    className={`inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-md ${
+                      startingCompetition 
+                        ? 'bg-green-500/50 text-white cursor-not-allowed' 
+                        : 'bg-green-600 text-white hover:bg-green-700'
+                    }`}
+                  >
+                    {startingCompetition ? (
+                      <>
+                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Starting...
+                      </>
+                    ) : (
+                      'Start Competition'
+                    )}
+                  </button>
+                )}
+                
+                {isAdmin && (
+                  <button
+                    onClick={handleSendDetails}
+                    disabled={sending}
+                    className={`inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-md ${
+                      sending 
+                        ? 'bg-primary/50 text-primary-foreground cursor-not-allowed' 
+                        : 'bg-primary text-primary-foreground hover:bg-primary/90'
+                    }`}
+                  >
+                    {sending ? (
+                      <>
+                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Sending...
+                      </>
+                    ) : (
+                      'Send Competition Update'
+                    )}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
-          {(isAdmin || (user && competition.created_by === user.id)) && (
-            <div className="flex space-x-3">
-              {/* Start Competition Button - only show if user is owner and competition is draft */}
-              {user && competition.created_by === user.id && competition.status === 'draft' && (
-                <button
-                  onClick={handleStartCompetition}
-                  disabled={startingCompetition}
-                  className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white 
-                    ${startingCompetition ? 'bg-green-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}
-                    focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500`}
-                >
-                  {startingCompetition ? (
-                    <>
-                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Starting...
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h1m4 0h1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      Start Competition
-                    </>
-                  )}
-                </button>
-              )}
-              
-              {/* Send Details Button - only show for admins */}
-              {isAdmin && (
-                <button
-                  onClick={handleSendDetails}
-                  disabled={sending}
-                  className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white 
-                    ${sending ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}
-                    focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500`}
-                >
-                  {sending ? 'Sending...' : 'Send Competition Update'}
-                </button>
-              )}
+          {/* Alert Messages */}
+          {error && (
+            <div className="mt-6 rounded-md bg-destructive/10 border border-destructive/20 p-4">
+              <div className="text-sm text-destructive font-medium">{error}</div>
             </div>
           )}
-        </div>
-
-        {error && (
-          <div className="mt-4 rounded-md bg-red-50 p-4">
-            <div className="text-sm text-red-700">{error}</div>
-          </div>
-        )}
-        
-        {success && (
-          <div className="mt-4 rounded-md bg-green-50 p-4">
-            <div className="text-sm text-green-700">{success}</div>
-          </div>
-        )}
-
-        {/* Competition Status Badge */}
-        <div className="mt-4">
-          <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-            competition.status === 'completed' 
-              ? 'bg-green-100 text-green-800'
-              : competition.status === 'started'
-              ? 'bg-blue-100 text-blue-800'
-              : 'bg-gray-100 text-gray-800'
-          }`}>
-            {competition.status.charAt(0).toUpperCase() + competition.status.slice(1)}
-          </span>
+          
+          {success && (
+            <div className="mt-6 rounded-md bg-green-500/10 border border-green-500/20 p-4">
+              <div className="text-sm text-green-600 font-medium">{success}</div>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Prizes Section */}
       {prizes.length > 0 && (
-        <div className="mb-8">
-          <h2 className="text-2xl font-semibold text-gray-900 mb-4">Prizes</h2>
+        <div className="mb-8 max-w-7xl mx-auto">
+          <h2 className="text-2xl font-bold text-foreground mb-4">Prizes</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {prizes.map((prize) => (
-              <div key={prize.id} className="bg-white shadow rounded-lg p-6">
-                <div className="text-lg font-medium text-gray-900 mb-2">
-                  {prize.rank === 1 ? '🥇' : prize.rank === 2 ? '🥈' : prize.rank === 3 ? '🥉' : `#${prize.rank}`}
-                  {' '}Place
+              <div 
+                key={prize.id} 
+                className="bg-card border border-border rounded-lg shadow-sm p-6"
+              >
+                <div className="text-center">
+                  <div className="text-lg font-semibold text-muted-foreground mb-2">
+                    {prize.rank === 1 ? '1st' : prize.rank === 2 ? '2nd' : prize.rank === 3 ? '3rd' : `${prize.rank}th`} Place
+                  </div>
+                  <div className="text-3xl font-bold text-foreground mb-3">
+                    {prize.value ? `$${prize.value.toLocaleString()}` : 'TBD'}
+                  </div>
+                  {prize.description && (
+                    <p className="text-sm text-muted-foreground">{prize.description}</p>
+                  )}
                 </div>
-                <div className="text-2xl font-bold text-green-600 mb-2">
-                  {prize.value ? `$${prize.value}` : 'Prize TBD'}
-                </div>
-                {prize.description && (
-                  <p className="text-sm text-gray-500">{prize.description}</p>
-                )}
               </div>
             ))}
           </div>
@@ -226,8 +268,8 @@ export default function CompetitionDetails() {
       )}
 
       {/* Leaderboard */}
-      <div className="mb-8">
-        <h2 className="text-2xl font-semibold text-gray-900 mb-4">Current Standings</h2>
+      <div className="mb-8 w-full">
+        <h2 className="text-2xl font-bold text-foreground mb-4 max-w-7xl mx-auto">Current Standings</h2>
         <LeaderboardCard 
           competitionId={competition.id}
           isEnded={competition.status === 'completed'}

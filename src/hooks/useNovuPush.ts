@@ -117,9 +117,25 @@ async function registerSubscriberWithNovu(
 
     console.log('Registering subscriber with Novu:', user.id);
 
+    // Fetch profile data to get first_name and last_name
+    let firstName = '';
+    let lastName = '';
+    try {
+      const pb = (await import('@/lib/pocketbase')).pb;
+      const profile = await pb.collection('profiles').getFirstListItem(
+        `user_id = "${user.id}"`
+      );
+      firstName = profile.first_name || '';
+      lastName = profile.last_name || '';
+      console.log('Profile data fetched:', { firstName, lastName, email: user.email });
+    } catch (profileError) {
+      console.error('Error fetching profile for Novu registration:', profileError);
+      // Fall back to user object if available
+      firstName = user.first_name || '';
+      lastName = user.last_name || '';
+    }
+
     // Build full name from first_name and last_name
-    const firstName = user.first_name || '';
-    const lastName = user.last_name || '';
     const fullName = [firstName, lastName].filter(Boolean).join(' ').trim() || user.email.split('@')[0];
 
     // Using Novu's public API to register subscriber
@@ -134,8 +150,8 @@ async function registerSubscriberWithNovu(
       body: JSON.stringify({
         subscriberId: user.id,
         email: user.email,
-        firstName: "Jessie",
-        lastName: "Smith",
+        firstName: firstName,
+        lastName: lastName,
         data: {
           // Additional user metadata
           registeredAt: new Date().toISOString(),
@@ -215,5 +231,53 @@ export async function unsubscribeFromPush() {
     }
   } catch (error) {
     console.error('Failed to unsubscribe from push:', error);
+  }
+}
+
+/**
+ * Update subscriber information in Novu (call when profile is updated)
+ * @param userId - The user's ID (subscriber ID)
+ * @param email - The user's email
+ * @param firstName - The user's first name
+ * @param lastName - The user's last name
+ */
+export async function updateNovuSubscriber(
+  userId: string,
+  email: string,
+  firstName?: string,
+  lastName?: string
+) {
+  try {
+    console.log('Updating Novu subscriber:', userId);
+    
+    const fullName = [firstName, lastName].filter(Boolean).join(' ').trim() || email.split('@')[0];
+    
+    const response = await fetch(`https://api.novu.co/v1/subscribers/${userId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        subscriberId: userId,
+        email: email,
+        firstName: firstName || '',
+        lastName: lastName || '',
+        data: {
+          fullName: fullName,
+          updatedAt: new Date().toISOString(),
+        }
+      })
+    });
+
+    if (response.ok) {
+      console.log('Novu subscriber updated successfully');
+      return true;
+    } else {
+      console.error('Failed to update Novu subscriber:', await response.text());
+      return false;
+    }
+  } catch (error) {
+    console.error('Error updating Novu subscriber:', error);
+    return false;
   }
 }

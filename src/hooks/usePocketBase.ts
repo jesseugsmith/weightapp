@@ -233,20 +233,37 @@ export function usePocketBase(): UsePocketBaseReturn {
 
   // Profile methods
   const updateProfile = useCallback(async (data: Partial<Profile>): Promise<Profile | null> => {
-    if (!profile) return null;
+    if (!profile || !user) return null;
 
     try {
       const updatedProfile = await pbRetry(() =>
         pb.collection('profiles').update(profile.id, data)
       );
       setProfile(updatedProfile as Profile);
+      
+      // Update Novu subscriber if first_name or last_name changed
+      if (data.first_name !== undefined || data.last_name !== undefined) {
+        try {
+          const { updateNovuSubscriber } = await import('./useNovuPush');
+          await updateNovuSubscriber(
+            user.id,
+            user.email,
+            updatedProfile.first_name,
+            updatedProfile.last_name
+          );
+        } catch (novuError) {
+          console.error('Failed to update Novu subscriber:', novuError);
+          // Don't fail the profile update if Novu update fails
+        }
+      }
+      
       return updatedProfile as Profile;
     } catch (error) {
       console.error('Error updating profile:', error);
       setProfileError(error as Error);
       return null;
     }
-  }, [profile]);
+  }, [profile, user]);
 
   const refreshProfile = useCallback(async () => {
     if (!user) return;

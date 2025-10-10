@@ -2,6 +2,15 @@
 
 import { useState } from 'react';
 import { pb } from '@/lib/pocketbase';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 
 interface CreateCompetitionModalProps {
@@ -29,11 +38,19 @@ export default function CreateCompetitionModal({
       description: '',
       startDate: tomorrow.toISOString().split('T')[0], // Format: YYYY-MM-DD
       endDate: nextMonth.toISOString().split('T')[0], // Format: YYYY-MM-DD
+      entryFee: '',
+      firstPlacePercentage: '50',
+      secondPlacePercentage: '30',
+      thirdPlacePercentage: '20',
     };
   });
   const [error, setError] = useState<string | null>(null);
 
-  if (!isOpen) return null;
+  const handleOpenChange = (open: boolean) => {
+    if (!open) {
+      onClose();
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,10 +84,49 @@ export default function CreateCompetitionModal({
         created_by: userId,
         status: 'draft',
         is_public: true,
-        competition_type: 'weight_loss'
+        competition_type: 'weight_loss',
+        entry_fee: newCompetition.entryFee ? parseFloat(newCompetition.entryFee) : 0
       };
 
       const competition = await pb.collection('competitions').create(competitionData);
+
+      // Create prizes with percentages
+      const prizes = [];
+      if (newCompetition.firstPlacePercentage) {
+        prizes.push({
+          competition_id: competition.id,
+          rank: 1,
+          title: '1st Place',
+          description: `${newCompetition.firstPlacePercentage}% of prize pool`,
+          value: parseFloat(newCompetition.firstPlacePercentage), // Store percentage as value
+          currency: 'PERCENT'
+        });
+      }
+      if (newCompetition.secondPlacePercentage) {
+        prizes.push({
+          competition_id: competition.id,
+          rank: 2,
+          title: '2nd Place',
+          description: `${newCompetition.secondPlacePercentage}% of prize pool`,
+          value: parseFloat(newCompetition.secondPlacePercentage),
+          currency: 'PERCENT'
+        });
+      }
+      if (newCompetition.thirdPlacePercentage) {
+        prizes.push({
+          competition_id: competition.id,
+          rank: 3,
+          title: '3rd Place',
+          description: `${newCompetition.thirdPlacePercentage}% of prize pool`,
+          value: parseFloat(newCompetition.thirdPlacePercentage),
+          currency: 'PERCENT'
+        });
+      }
+
+      // Create all prizes
+      for (const prize of prizes) {
+        await pb.collection('prizes').create(prize);
+      }
 
       // Automatically join the competition you create
       await pb.collection('competition_participants').create({
@@ -84,6 +140,10 @@ export default function CreateCompetitionModal({
         description: '',
         startDate: '',
         endDate: '',
+        entryFee: '',
+        firstPlacePercentage: '50',
+        secondPlacePercentage: '30',
+        thirdPlacePercentage: '20',
       });
 
       onCompetitionCreated();
@@ -95,37 +155,39 @@ export default function CreateCompetitionModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-medium">Create Competition</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+    <Sheet open={isOpen} onOpenChange={handleOpenChange}>
+      <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle>Create Competition</SheetTitle>
+          <SheetDescription>
+            Set up a new weight competition for you and your friends.
+          </SheetDescription>
+        </SheetHeader>
+        
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-md text-sm">
+          <div className="mt-4 p-3 bg-destructive/10 border border-destructive/20 text-destructive rounded-md text-sm">
             {error}
           </div>
         )}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+        
+        <form onSubmit={handleSubmit} className="space-y-6 mt-6">
+          <div className="space-y-2">
+            <label htmlFor="name" className="text-sm font-medium text-foreground">
               Competition Name
             </label>
-            <input
+            <Input
               type="text"
               id="name"
               value={newCompetition.name}
               onChange={(e) => setNewCompetition({ ...newCompetition, name: e.target.value })}
               required
-              className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              placeholder="e.g., Summer Fitness Challenge"
+              className="w-full"
             />
           </div>
-          <div>
-            <label htmlFor="description" className="block text-sm font-medium text-gray-700">
+          
+          <div className="space-y-2">
+            <label htmlFor="description" className="text-sm font-medium text-foreground">
               Description
             </label>
             <textarea
@@ -133,52 +195,160 @@ export default function CreateCompetitionModal({
               value={newCompetition.description}
               onChange={(e) => setNewCompetition({ ...newCompetition, description: e.target.value })}
               rows={3}
-              className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              placeholder="Describe your competition..."
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             />
           </div>
-          <div>
-            <label htmlFor="startDate" className="block text-sm font-medium text-gray-700">
+          
+          <div className="space-y-2">
+            <label htmlFor="startDate" className="text-sm font-medium text-foreground">
               Start Date
             </label>
-            <input
+            <Input
               type="date"
               id="startDate"
               value={newCompetition.startDate}
               onChange={(e) => setNewCompetition({ ...newCompetition, startDate: e.target.value })}
               required
-              className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              className="w-full"
             />
           </div>
-          <div>
-            <label htmlFor="endDate" className="block text-sm font-medium text-gray-700">
+          
+          <div className="space-y-2">
+            <label htmlFor="endDate" className="text-sm font-medium text-foreground">
               End Date
             </label>
-            <input
+            <Input
               type="date"
               id="endDate"
               value={newCompetition.endDate}
               onChange={(e) => setNewCompetition({ ...newCompetition, endDate: e.target.value })}
               required
-              className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              className="w-full"
             />
           </div>
-          <div className="flex justify-end space-x-3">
-            <button
+          
+          <div className="space-y-2">
+            <label htmlFor="entryFee" className="text-sm font-medium text-foreground">
+              Entry Fee (Optional)
+            </label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+              <Input
+                type="number"
+                id="entryFee"
+                value={newCompetition.entryFee}
+                onChange={(e) => setNewCompetition({ ...newCompetition, entryFee: e.target.value })}
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+                className="w-full pl-7"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">Set an entry fee for participants to join</p>
+          </div>
+
+          {/* Prize Section */}
+          <div className="space-y-4 pt-4 border-t border-border">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground mb-2">Prize Distribution</h3>
+              <p className="text-xs text-muted-foreground mb-4">
+                Set the percentage of the prize pool for each place (must total 100%)
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="firstPlacePercentage" className="text-sm font-medium text-foreground flex items-center gap-2">
+                <span>🥇</span> 1st Place
+              </label>
+              <div className="relative">
+                <Input
+                  type="number"
+                  id="firstPlacePercentage"
+                  value={newCompetition.firstPlacePercentage}
+                  onChange={(e) => setNewCompetition({ ...newCompetition, firstPlacePercentage: e.target.value })}
+                  min="0"
+                  max="100"
+                  step="1"
+                  placeholder="50"
+                  className="w-full pr-8"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="secondPlacePercentage" className="text-sm font-medium text-foreground flex items-center gap-2">
+                <span>🥈</span> 2nd Place
+              </label>
+              <div className="relative">
+                <Input
+                  type="number"
+                  id="secondPlacePercentage"
+                  value={newCompetition.secondPlacePercentage}
+                  onChange={(e) => setNewCompetition({ ...newCompetition, secondPlacePercentage: e.target.value })}
+                  min="0"
+                  max="100"
+                  step="1"
+                  placeholder="30"
+                  className="w-full pr-8"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="thirdPlacePercentage" className="text-sm font-medium text-foreground flex items-center gap-2">
+                <span>🥉</span> 3rd Place
+              </label>
+              <div className="relative">
+                <Input
+                  type="number"
+                  id="thirdPlacePercentage"
+                  value={newCompetition.thirdPlacePercentage}
+                  onChange={(e) => setNewCompetition({ ...newCompetition, thirdPlacePercentage: e.target.value })}
+                  min="0"
+                  max="100"
+                  step="1"
+                  placeholder="20"
+                  className="w-full pr-8"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
+              </div>
+            </div>
+
+            {/* Show total percentage */}
+            {(() => {
+              const total = 
+                (parseFloat(newCompetition.firstPlacePercentage) || 0) +
+                (parseFloat(newCompetition.secondPlacePercentage) || 0) +
+                (parseFloat(newCompetition.thirdPlacePercentage) || 0);
+              const isValid = total === 100;
+              
+              return (
+                <div className={`text-sm font-medium ${isValid ? 'text-green-600 dark:text-green-500' : 'text-destructive'}`}>
+                  Total: {total}% {isValid ? '✓' : '(must equal 100%)'}
+                </div>
+              );
+            })()}
+          </div>
+          
+          <div className="flex justify-end space-x-3 pt-4">
+            <Button
               type="button"
+              variant="outline"
               onClick={onClose}
-              className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
-              className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700"
             >
-              Create
-            </button>
+              Create Competition
+            </Button>
           </div>
         </form>
-      </div>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 }
