@@ -96,30 +96,24 @@ export default function CreateCompetitionModal({
         prizes.push({
           competition_id: competition.id,
           rank: 1,
-          title: '1st Place',
-          description: `${newCompetition.firstPlacePercentage}% of prize pool`,
-          value: parseFloat(newCompetition.firstPlacePercentage), // Store percentage as value
-          currency: 'PERCENT'
+          prize_amount: parseFloat(newCompetition.firstPlacePercentage), // Store percentage as prize_amount
+          prize_description: `1st Place - ${newCompetition.firstPlacePercentage}% of prize pool`
         });
       }
       if (newCompetition.secondPlacePercentage) {
         prizes.push({
           competition_id: competition.id,
           rank: 2,
-          title: '2nd Place',
-          description: `${newCompetition.secondPlacePercentage}% of prize pool`,
-          value: parseFloat(newCompetition.secondPlacePercentage),
-          currency: 'PERCENT'
+          prize_amount: parseFloat(newCompetition.secondPlacePercentage),
+          prize_description: `2nd Place - ${newCompetition.secondPlacePercentage}% of prize pool`
         });
       }
       if (newCompetition.thirdPlacePercentage) {
         prizes.push({
           competition_id: competition.id,
           rank: 3,
-          title: '3rd Place',
-          description: `${newCompetition.thirdPlacePercentage}% of prize pool`,
-          value: parseFloat(newCompetition.thirdPlacePercentage),
-          currency: 'PERCENT'
+          prize_amount: parseFloat(newCompetition.thirdPlacePercentage),
+          prize_description: `3rd Place - ${newCompetition.thirdPlacePercentage}% of prize pool`
         });
       }
 

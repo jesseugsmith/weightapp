@@ -7,14 +7,21 @@ import { pb } from '@/lib/pocketbase';
 
 import { Competition, CompetitionParticipant, CompetitionParticipantExpanded, WeightEntry } from '@/types/database.types';
 import { weightService, competitionService, userService } from '@/utils/dataService';
+import { standingsService } from '@/utils/standingsService';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import LogWeightModal from '@/components/LogWeightModal';
 import WeightChart from '@/components/WeightChart';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+
+interface CompetitionWithRank extends CompetitionParticipantExpanded {
+  userRank?: number;
+  totalParticipants?: number;
+}
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const [activeCompetitions, setActiveCompetitions] = useState<CompetitionParticipantExpanded[]>([]);
+  const [activeCompetitions, setActiveCompetitions] = useState<CompetitionWithRank[]>([]);
   const [latestWeight, setLatestWeight] = useState<number | null>(null);
   const [startingWeight, setStartingWeight] = useState<number | null>(null);
   const [totalWeightLoss, setTotalWeightLoss] = useState<number | null>(null);
@@ -87,7 +94,42 @@ export default function Dashboard() {
           expand: 'competition_id'
         }) as CompetitionParticipantExpanded[];
 
-        setActiveCompetitions(competitions);
+        // Fetch rank and total participants for each competition
+        const competitionsWithRank = await Promise.all(
+          competitions.map(async (comp) => {
+            const competitionId = comp.expand?.competition_id?.id;
+            if (!competitionId) return { ...comp, userRank: undefined, totalParticipants: 0 };
+
+            try {
+              const [rank, participants] = await Promise.all([
+                standingsService.getUserRank(competitionId, user.id),
+                pb.collection('competition_participants').getFullList({
+                  filter: `competition_id = "${competitionId}" && is_active = true`
+                })
+              ]);
+
+              return {
+                ...comp,
+                userRank: rank,
+                totalParticipants: participants.length
+              };
+            } catch (error) {
+              console.error('Error fetching rank for competition:', competitionId, error);
+              return { ...comp, userRank: undefined, totalParticipants: 0 };
+            }
+          })
+        );
+
+        // Sort by end date (soonest first) and limit to 5
+        const sortedCompetitions = competitionsWithRank
+          .sort((a, b) => {
+            const dateA = new Date(a.expand?.competition_id?.end_date || '').getTime();
+            const dateB = new Date(b.expand?.competition_id?.end_date || '').getTime();
+            return dateA - dateB;
+          })
+          .slice(0, 5);
+
+        setActiveCompetitions(sortedCompetitions);
       } catch (error) {
         console.error('Error fetching competitions:', error);
       }
@@ -153,65 +195,83 @@ export default function Dashboard() {
       </div>
 
       {/* Active Competitions */}
-      <div className="border bg-card shadow rounded-lg p-6">
-        <h2 className="text-lg font-medium text-white mb-4">Active Competitions</h2>
+      <div className="mb-8">
+        <h2 className="text-2xl font-semibold text-white mb-4">Active Competitions</h2>
         {activeCompetitions.length === 0 ? (
-          <div className="text-center py-6">
-            <p className="text-gray-400 mb-4">You don&apos;t have any active competitions</p>
-            <a 
-              href="/competitions"
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 transition-all duration-200"
-            >
-              Browse Competitions
-            </a>
-          </div>
+          <Card>
+            <CardContent className="text-center py-12">
+              <p className="text-gray-400 mb-4">You don&apos;t have any active competitions</p>
+              <a 
+                href="/competitions"
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 transition-all duration-200"
+              >
+                Browse Competitions
+              </a>
+            </CardContent>
+          </Card>
         ) : (
-          <div className="space-y-6">
-            {activeCompetitions.map((comp) => (
-              <div key={comp.id} className="border-b border-gray-700 pb-4 last:border-b-0 last:pb-0">
-                <h3 className="text-md font-medium text-white">{comp.expand?.competition_id?.name}</h3>
-                <p className="text-sm text-gray-400 mb-2">{comp.expand?.competition_id?.description}</p>
-                <div className="grid grid-cols-3 gap-4 mt-2">
-                  <div>
-                    <p className="text-sm text-gray-500">Starting Weight</p>
-                    <p className="text-lg font-medium text-blue-400">
-                      {comp.starting_weight ? `${comp.starting_weight.toFixed(1)} lbs` : 'N/A'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Current Weight</p>
-                    <p className="text-lg font-medium text-purple-400">
-                      {latestWeight ? `${latestWeight.toFixed(1)} lbs` : 'N/A'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Progress</p>
-                    <p className="text-lg font-medium text-green-400">
-                      {comp.weight_change_percentage !== undefined && comp.weight_change_percentage !== null
-                        ? `${comp.weight_change_percentage.toFixed(1)}%`
-                        : 'N/A'}
-                    </p>
-                  </div>
-                </div>
-                <div className="mt-2">
-                  <div className="text-xs text-gray-400">
-                    {(() => {
-                      const daysLeft = calculateDaysLeft(comp.expand?.competition_id?.end_date || '');
-                      const formattedDays = formatDaysLeft(daysLeft);
-                      return (
-                        <span className={
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {activeCompetitions.map((comp) => {
+              const daysLeft = calculateDaysLeft(comp.expand?.competition_id?.end_date || '');
+              const formattedDays = formatDaysLeft(daysLeft);
+              
+              return (
+                <Card key={comp.id} className="hover:shadow-lg transition-shadow duration-200">
+                  <CardHeader>
+                    <div className="flex justify-between items-start mb-2">
+                      <CardTitle className="text-lg">{comp.expand?.competition_id?.name}</CardTitle>
+                      {comp.userRank && (
+                        <div className="flex flex-col items-center bg-gradient-to-br from-orange-500 to-red-600 text-white rounded-lg px-3 py-2 min-w-[60px]">
+                          <span className="text-xs font-medium uppercase tracking-wide">Place</span>
+                          <span className="text-2xl font-bold leading-none">{comp.userRank}</span>
+                          <span className="text-xs opacity-90">of {comp.totalParticipants}</span>
+                        </div>
+                      )}
+                    </div>
+                    <CardDescription>{comp.expand?.competition_id?.description}</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {/* Stats Grid - All in one row */}
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="bg-muted/50 rounded-lg p-2">
+                          <p className="text-xs text-muted-foreground mb-1">Starting</p>
+                          <p className="text-sm font-semibold text-blue-400">
+                            {comp.starting_weight ? `${comp.starting_weight.toFixed(1)} lbs` : 'N/A'}
+                          </p>
+                        </div>
+                        <div className="bg-muted/50 rounded-lg p-2">
+                          <p className="text-xs text-muted-foreground mb-1">Current</p>
+                          <p className="text-sm font-semibold text-purple-400">
+                            {latestWeight ? `${latestWeight.toFixed(1)} lbs` : 'N/A'}
+                          </p>
+                        </div>
+                        <div className="bg-muted/50 rounded-lg p-2">
+                          <p className="text-xs text-muted-foreground mb-1">Progress</p>
+                          <p className="text-sm font-semibold text-green-400">
+                            {comp.weight_change_percentage !== undefined && comp.weight_change_percentage !== null
+                              ? `${comp.weight_change_percentage.toFixed(1)}%`
+                              : 'N/A'}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      {/* Time Left */}
+                      <div className="flex items-center justify-between pt-2 border-t border-border">
+                        <span className="text-xs text-muted-foreground">Time Remaining</span>
+                        <span className={`text-sm font-medium ${
                           daysLeft < 0 ? 'text-red-400' : 
                           daysLeft <= 7 ? 'text-orange-400' : 
-                          'text-gray-400'
-                        }>
+                          'text-green-400'
+                        }`}>
                           {formattedDays}
                         </span>
-                      );
-                    })()}
-                  </div>
-                </div>
-              </div>
-            ))}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         )}
       </div>

@@ -38,9 +38,6 @@ export default function WeightChart() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [timeFrame, setTimeFrame] = useState<TimeFrame>('1M');
-  const [startDate, setStartDate] = useState<string>('');
-  const [endDate, setEndDate] = useState<string>('');
-  const [isCustomDate, setIsCustomDate] = useState(false);
 
   const fetchWeightData = useCallback(async () => {
     if (!user) return;
@@ -103,13 +100,6 @@ export default function WeightChart() {
   }, [user, fetchWeightData]);
 
   const filteredData = useMemo(() => {
-    if (isCustomDate && startDate && endDate) {
-      return weightData.filter(entry => {
-        const entryDate = new Date(entry.date);
-        return entryDate >= new Date(startDate) && entryDate <= new Date(endDate);
-      });
-    }
-
     if (timeFrame === 'ALL') return weightData;
 
     const now = new Date();
@@ -134,7 +124,7 @@ export default function WeightChart() {
     }
 
     return weightData.filter(entry => new Date(entry.date) >= cutoffDate);
-  }, [weightData, timeFrame, isCustomDate, startDate, endDate]);
+  }, [weightData, timeFrame]);
 
   const chartData = useMemo(() => {
     return filteredData.map(entry => ({
@@ -196,12 +186,9 @@ export default function WeightChart() {
             {timeFrameButtons.map(({ label, value }) => (
               <button
                 key={value}
-                onClick={() => {
-                  setTimeFrame(value);
-                  setIsCustomDate(false);
-                }}
+                onClick={() => setTimeFrame(value)}
                 className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                  timeFrame === value && !isCustomDate
+                  timeFrame === value
                     ? 'bg-primary text-primary-foreground shadow-lg'
                     : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'
                 }`}
@@ -210,43 +197,6 @@ export default function WeightChart() {
               </button>
             ))}
           </div>
-        </div>
-        
-        <div className="flex items-center space-x-4 mt-4">
-          <div className="flex items-center space-x-2">
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => {
-                setStartDate(e.target.value);
-                setIsCustomDate(true);
-              }}
-              className="px-2 py-1 rounded border border-input bg-background text-sm"
-            />
-            <span className="text-muted-foreground">to</span>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => {
-                setEndDate(e.target.value);
-                setIsCustomDate(true);
-              }}
-              className="px-2 py-1 rounded border border-input bg-background text-sm"
-            />
-          </div>
-          {isCustomDate && (
-            <button
-              onClick={() => {
-                setIsCustomDate(false);
-                setStartDate('');
-                setEndDate('');
-                setTimeFrame('1M');
-              }}
-              className="text-sm text-primary hover:text-primary/80"
-            >
-              Reset
-            </button>
-          )}
         </div>
       </CardHeader>
       <CardContent>

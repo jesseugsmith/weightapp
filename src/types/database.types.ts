@@ -56,10 +56,8 @@ export interface CompetitionParticipant extends RecordModel {
 export interface Prize extends RecordModel {
   competition_id: string;
   rank: number;
-  title: string;
-  description?: string;
-  value?: number;
-  currency?: string;
+  prize_amount: number;
+  prize_description?: string;
 }
 
 export interface Winner extends RecordModel {
