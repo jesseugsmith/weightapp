@@ -90,7 +90,7 @@ export function NavUser({
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push('/api-tokens')}>
                 <BadgeCheck />
                 Account
               </DropdownMenuItem>

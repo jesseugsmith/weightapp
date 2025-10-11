@@ -7,7 +7,13 @@ export default function NotificationInbox({ subscriberId }: { subscriberId: stri
 
   if (!applicationIdentifier) {
     console.error('NEXT_PUBLIC_NOVU_APPLICATION_IDENTIFIER is not set');
-    return null;
+    console.error('Please add NEXT_PUBLIC_NOVU_APPLICATION_IDENTIFIER to your .env.local file');
+    console.error('Then restart your dev server: npm run dev');
+    return (
+      <div className="p-4 text-sm text-muted-foreground">
+        Notification inbox unavailable. Check console for configuration details.
+      </div>
+    );
   }
 
   console.log('NotificationInbox rendering with:', { subscriberId, applicationIdentifier });

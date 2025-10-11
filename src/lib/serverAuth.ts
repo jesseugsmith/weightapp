@@ -1,60 +1,64 @@
 import { NextRequest } from 'next/server';
-import { cookies } from 'next/headers';
 import PocketBase from 'pocketbase';
 
 /**
- * Server-side authentication utility for API routes
- * Verifies user session using PocketBase cookie
- */
-export async function verifyAuth(request: NextRequest) {
-  try {
-    const cookieStore = await cookies();
-    const pbAuth = cookieStore.get('pb_auth');
-    
-    if (!pbAuth) {
-      return null;
-    }
-
-    // Initialize PocketBase on server-side
-    const pb = new PocketBase(process.env.NEXT_PUBLIC_POCKETBASE_URL || 'http://localhost:8090');
-    
-    // Load auth from cookie
-    pb.authStore.loadFromCookie(pbAuth.value);
-    
-    // Verify the token is valid
-    if (!pb.authStore.isValid || !pb.authStore.model) {
-      return null;
-    }
-
-    return pb.authStore.model;
-  } catch (error) {
-    console.error('Auth verification error:', error);
-    return null;
-  }
-}
-
-/**
  * Get authenticated PocketBase instance for server-side operations
+ * Reads auth token from Authorization header
  */
-export async function getAuthenticatedPB(): Promise<{ pb: PocketBase; user: any } | null> {
+export async function getAuthenticatedPB(request: NextRequest): Promise<{ pb: PocketBase; user: any } | null> {
   try {
-    const cookieStore = await cookies();
-    const pbAuth = cookieStore.get('pb_auth');
+    // Get token from Authorization header
+    const authHeader = request.headers.get('authorization');
     
-    if (!pbAuth) {
+    console.log('🔍 Auth header check:', {
+      hasHeader: !!authHeader,
+      headerStart: authHeader?.substring(0, 20)
+    });
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.log('❌ No Authorization header found');
       return null;
     }
 
+    const token = authHeader.replace('Bearer ', '');
+    
+    console.log('🔑 Token extracted:', {
+      length: token.length,
+      start: token.substring(0, 10)
+    });
+    
+    if (!token) {
+      console.log('❌ No token in Authorization header');
+      return null;
+    }
+
+    // Initialize PocketBase and set the token
     const pb = new PocketBase(process.env.NEXT_PUBLIC_POCKETBASE_URL || 'http://localhost:8090');
-    pb.authStore.loadFromCookie(pbAuth.value);
+    pb.authStore.save(token, null);
     
-    if (!pb.authStore.isValid || !pb.authStore.model) {
+    console.log('💾 Token saved to authStore');
+    
+    // Verify the token by fetching the user
+    try {
+      const authData = await pb.collection('users').authRefresh();
+      
+      if (!authData || !authData.record) {
+        console.log('❌ Token validation failed - no auth data');
+        return null;
+      }
+      
+      console.log('✅ Auth verified for user:', authData.record.id);
+      return { pb, user: authData.record };
+    } catch (refreshError: any) {
+      console.error('❌ Token refresh failed:', {
+        message: refreshError.message,
+        status: refreshError.status,
+        data: refreshError.data
+      });
       return null;
     }
-
-    return { pb, user: pb.authStore.model };
   } catch (error) {
-    console.error('Error getting authenticated PocketBase:', error);
+    console.error('❌ Error getting authenticated PocketBase:', error);
     return null;
   }
 }

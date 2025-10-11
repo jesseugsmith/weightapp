@@ -75,18 +75,13 @@ export default function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed
   // Get avatar URL from user or profile
   const getAvatarUrl = () => {
     // First try to get avatar from user object
-    if (user?.avatar) {
-      return pb.files.getUrl(user, user.avatar);
+    if (user && user.avatar) {
+      return pb.files.getURL(user, user.avatar);
     }
-    // Then try from profile
-    if (profile?.avatar) {
-      return pb.files.getUrl(profile, profile.avatar);
+    if (profile && profile.avatar) {
+      return pb.files.getURL(profile, profile.avatar);
     }
-    // Try photo_url from profile
-    if (profile?.photo_url) {
-      return profile.photo_url;
-    }
-    return null;
+    return '/default-avatar.svg';
   };
 
   const avatarUrl = getAvatarUrl();

@@ -1,30 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
-import PocketBase from 'pocketbase';
 
 /**
- * API endpoint to register/update a subscriber with Novu
- * This is called during user registration or profile updates
+ * TEST ONLY - API endpoint to test Novu subscriber creation without auth
+ * This endpoint should be removed in production
  */
 export async function POST(request: NextRequest) {
   try {
-    console.log('🔍 Register subscriber endpoint called');
+    console.log('🧪 TEST: Register subscriber endpoint called');
     
     const { subscriberId, email, firstName, lastName } = await request.json();
 
     if (!subscriberId || !email) {
-      console.error('❌ Missing required fields');
       return NextResponse.json(
         { error: 'subscriberId and email are required' },
         { status: 400 }
       );
     }
-
-    console.log('� Received request:', {
-      subscriberId,
-      email,
-      firstName,
-      lastName
-    });
 
     // Get Novu API key from environment (server-side only)
     const novuApiKey = process.env.NOVU_API_KEY;
@@ -37,7 +28,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('📝 Registering/updating subscriber with Novu:', {
+    console.log('📝 TEST: Registering subscriber with Novu:', {
       subscriberId,
       email,
       firstName,
@@ -58,7 +49,7 @@ export async function POST(request: NextRequest) {
       }
     };
 
-    console.log('📤 Sending to Novu API:', JSON.stringify(requestBody, null, 2));
+    console.log('📤 TEST: Sending to Novu API:', JSON.stringify(requestBody, null, 2));
 
     // Register/update subscriber with Novu
     const response = await fetch(
@@ -73,11 +64,11 @@ export async function POST(request: NextRequest) {
       }
     );
 
-    console.log('📥 Novu API response status:', response.status, response.statusText);
+    console.log('📥 TEST: Novu API response status:', response.status, response.statusText);
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('❌ Novu API error:', {
+      console.error('❌ TEST: Novu API error:', {
         status: response.status,
         statusText: response.statusText,
         error: errorText
@@ -89,10 +80,7 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await response.json();
-    console.log('✅ Subscriber registered/updated successfully:', {
-      subscriberId,
-      response: data
-    });
+    console.log('✅ TEST: Subscriber registered successfully:', data);
 
     return NextResponse.json({
       success: true,
@@ -101,7 +89,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Error registering subscriber:', error);
+    console.error('❌ TEST: Error registering subscriber:', error);
     return NextResponse.json(
       { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }

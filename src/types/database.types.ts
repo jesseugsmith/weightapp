@@ -127,6 +127,15 @@ export interface AuditLog extends RecordModel {
   user_agent?: string;
 }
 
+export interface ApiToken extends RecordModel {
+  user_id: string;
+  name: string;
+  token: string;
+  last_used_at?: string;
+  is_active: boolean;
+  expires_at?: string;
+}
+
 export interface UserProfileExpanded extends Profile {
   expand?: {
     user_id?: User;

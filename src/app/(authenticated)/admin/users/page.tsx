@@ -216,9 +216,9 @@ export default function UserManagement() {
         // Get the photo URL - prioritize profile photo, then user avatar
         let photoUrl = null;
         if (profile?.photo_url) {
-          photoUrl = pb.files.getUrl(profile, profile.photo_url);
+          photoUrl = pb.files.getURL(profile, profile.photo_url);
         } else if (u.avatar) {
-          photoUrl = pb.files.getUrl(u, u.avatar);
+          photoUrl = pb.files.getURL(u, u.avatar);
         }
         
         return {

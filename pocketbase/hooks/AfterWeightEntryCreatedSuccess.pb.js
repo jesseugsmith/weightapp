@@ -32,6 +32,59 @@ onRecordAfterCreateSuccess((e) => {
     } catch (error) {
         console.error(`Error updating competition participations:`, error)
     }
+
+    // --- Novu email notification ---
+    try {
+        const userId = e.record.get("user_id") || e.record.get("user");
+        const weight = e.record.get("weight");
+        const date = e.record.get("date");
+        const unit = e.record.get("unit") || "lbs";
+
+        // Get user profile for first/last name (optional)
+        let firstName = "";
+        let lastName = "";
+        try {
+            const profile = $app.findFirstRecordByFilter(
+                "profiles",
+                `user = "${userId}"`
+            );
+            if (profile) {
+                firstName = profile.get("firstName") || "";
+                lastName = profile.get("lastName") || "";
+            }
+        } catch (err) {
+            // Profile lookup failed, continue without names
+        }
+
+        const novuApiKey = process.env.NOVU_API_KEY || "";
+        const response = $http.send({
+            url: "https://api.novu.co/v2/events/trigger",
+            method: "POST",
+            headers: {
+                "Authorization": `ApiKey ${novuApiKey}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                workflowId: "weight-entry-logged",
+                to: { subscriberId: userId },
+                payload: {
+                    weight,
+                    date,
+                    unit,
+                    firstName,
+                    lastName
+                }
+            })
+        });
+
+        if (response.statusCode === 200 || response.statusCode === 201) {
+            console.log("✅ Email notification sent for weight entry:", userId);
+        } else {
+            console.error("❌ Failed to send email notification:", response.raw);
+        }
+    } catch (err) {
+        console.error("❌ Error sending Novu email notification:", err);
+    }
 }, "weight_entries")
 
 

@@ -18,6 +18,7 @@ import {
   Scale,
   type LucideIcon,
   CloudLightning,
+  Key,
 } from "lucide-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -137,7 +138,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             : "User",
           email: user?.email || '',
           avatar: user?.avatar 
-            ? pb.files.getUrl(user, user.avatar) 
+            ? pb.files.getURL(user, user.avatar) 
             : '/avatars/default.png',
         },
         navMain,
@@ -146,6 +147,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             title: "Log Weight",
             icon: Scale,
             onClick: () => setIsLogWeightModalOpen(true),
+          },
+          {
+            title: "API Tokens",
+            url: "/api-tokens",
+            icon: Key,
           },
           {
             title: "Support",
@@ -168,11 +174,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     const getAvatarUrl = () => {
       // First try to get avatar from user object
       if (user?.avatar) {
-        return pb.files.getUrl(user, user.avatar);
+        return pb.files.getURL(user, user.avatar);
       }
       // Then try from profile
       if (profile?.avatar) {
-        return pb.files.getUrl(profile, profile.avatar);
+        return pb.files.getURL(profile, profile.avatar);
       }
       // Try photo_url from profile
       if (profile?.photo_url) {

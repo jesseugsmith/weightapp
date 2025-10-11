@@ -54,7 +54,7 @@ export default function ProfilePhotoUpload({
 
       // Get the avatar URL
       const avatarUrl = updatedProfile.avatar 
-        ? pb.files.getUrl(updatedProfile, updatedProfile.avatar)
+        ? pb.files.getURL(updatedProfile, updatedProfile.avatar)
         : null;
 
       onPhotoUpdate(avatarUrl);

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAuth } from '@/lib/serverAuth';
+import PocketBase from 'pocketbase';
 
 /**
  * API endpoint to update subscriber information in Novu
@@ -7,16 +7,21 @@ import { verifyAuth } from '@/lib/serverAuth';
  */
 export async function PUT(request: NextRequest) {
   try {
-    // Verify authentication
-    const user = await verifyAuth(request);
-    if (!user) {
+    const { subscriberId, email, firstName, lastName } = await request.json();
+
+    if (!subscriberId || !email) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
+        { error: 'subscriberId and email are required' },
+        { status: 400 }
       );
     }
 
-    const { email, firstName, lastName } = await request.json();
+    console.log('📝 Update subscriber request:', {
+      subscriberId,
+      email,
+      firstName,
+      lastName
+    });
 
     // Get Novu API key from environment (server-side only)
     const novuApiKey = process.env.NOVU_API_KEY;
@@ -29,16 +34,16 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    console.log('Updating subscriber in Novu:', user.id);
+    console.log('Updating subscriber in Novu:', subscriberId);
 
     // Build full name
     const fullName = [firstName, lastName].filter(Boolean).join(' ').trim() || email.split('@')[0];
 
-    // Update subscriber with Novu
+    // Update subscriber with Novu (use PATCH for v2 API)
     const response = await fetch(
-      `https://api.novu.co/v1/subscribers/${user.id}`,
+      `https://api.novu.co/v2/subscribers/${subscriberId}`,
       {
-        method: 'PUT',
+        method: 'PATCH',
         headers: {
           'Authorization': `ApiKey ${novuApiKey}`,
           'Content-Type': 'application/json',
@@ -65,7 +70,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const data = await response.json();
-    console.log('Subscriber updated successfully:', user.id);
+    console.log('Subscriber updated successfully:', subscriberId);
 
     return NextResponse.json({
       success: true,

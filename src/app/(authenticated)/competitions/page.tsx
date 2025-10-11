@@ -111,7 +111,7 @@ export default function Competitions() {
             
             // Try to get avatar from user
             if (user.avatar) {
-              avatarUrl = pb.files.getUrl(user, user.avatar, { thumb: '100x100' });
+              avatarUrl = pb.files.getURL(user, user.avatar, { thumb: '100x100' });
             }
             
             return {

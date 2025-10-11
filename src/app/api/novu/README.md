@@ -100,6 +100,32 @@ Call `updateNovuSubscriber()` from client when profile is updated.
 
 ---
 
+### 4. POST `/api/novu/send-test-notification`
+
+Sends a test notification to the authenticated user, demonstrating how first and last names are included.
+
+**Authentication:** Required (PocketBase cookie)
+
+**Request Body:** None required (uses authenticated user's profile)
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Test notification sent successfully",
+  "data": {
+    "firstName": "John",
+    "lastName": "Doe",
+    "sentAt": "2024-01-01T12:00:00.000Z"
+  }
+}
+```
+
+**Usage:**
+Test endpoint to verify Novu setup and name inclusion in notifications.
+
+---
+
 ## Environment Variables
 
 ### Server-Side (Vercel Secret)

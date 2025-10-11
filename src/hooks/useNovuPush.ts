@@ -27,70 +27,27 @@ export function useNovuPush() {
 
     const setupPushNotifications = async () => {
       try {
-        // Check if browser supports notifications
-        if (!('Notification' in window)) {
-          console.log('This browser does not support push notifications');
-          return;
-        }
+        console.log('🎯 Starting Novu setup for user:', user.id);
 
-        // Check if service worker is supported
-        if (!('serviceWorker' in navigator)) {
-          console.log('This browser does not support service workers');
-          return;
-        }
-
-        console.log('Setting up push notifications for user:', user.id);
-
-        // Request notification permission if not already granted
-        if (Notification.permission === 'default') {
-          const permission = await Notification.requestPermission();
-          console.log('Notification permission:', permission);
-          
-          if (permission !== 'granted') {
-            console.log('User denied push notification permission');
-            return;
-          }
-        } else if (Notification.permission === 'denied') {
-          console.log('Push notifications are blocked by user');
-          return;
-        }
-
-        console.log('Notification permission granted, registering service worker...');
-
-        // Register service worker
-        const registration = await navigator.serviceWorker.register('/novu-sw.js');
-        console.log('Service worker registered:', registration);
-
-        // Wait for service worker to be ready
-        await navigator.serviceWorker.ready;
-
-        // Get existing subscription or create new one
-        let subscription = await registration.pushManager.getSubscription();
+        // FIRST: Register subscriber with Novu (this should always happen)
+        await registerSubscriberWithNovu(user);
         
-        if (!subscription) {
-          // Subscribe to push notifications
-          // Note: You may need to get the VAPID public key from Novu dashboard
-          const vapidPublicKey = process.env.NEXT_PUBLIC_NOVU_VAPID_PUBLIC_KEY;
-          
-          subscription = await registration.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: vapidPublicKey || undefined
-          });
-          
-          console.log('Push subscription created:', subscription);
-        } else {
-          console.log('Push subscription already exists:', subscription);
+        // THEN: Try to set up push notifications (optional, may fail)
+        try {
+          await setupPushCredentials(user);
+          console.log('✅ Push notifications enabled');
+        } catch (pushError) {
+          console.warn('⚠️ Push notifications not available (this is OK):', pushError);
+          console.info('💡 In-app notifications will still work via Novu Inbox');
+          // Don't fail the whole process if push setup fails
         }
-
-        // Register subscriber with Novu
-        await registerSubscriberWithNovu(user, subscription);
         
         // Mark this user as registered
         registeredUsers.add(user.id);
-        console.log('Push notifications setup complete for user:', user.id);
+        console.log('✅ Novu setup complete for user:', user.id);
 
       } catch (error) {
-        console.error('Failed to setup push notifications:', error);
+        console.error('❌ Failed to setup Novu:', error);
         // Reset the flag so we can retry on next mount if needed
         hasAttemptedRegistration.current = false;
       }
@@ -101,15 +58,74 @@ export function useNovuPush() {
 }
 
 /**
- * Register the subscriber and their push subscription with Novu
+ * Set up push notification credentials (optional)
+ */
+async function setupPushCredentials(user: any) {
+  // Check if browser supports notifications
+  if (!('Notification' in window)) {
+    console.log('This browser does not support push notifications');
+    return;
+  }
+
+  // Check if service worker is supported
+  if (!('serviceWorker' in navigator)) {
+    console.log('This browser does not support service workers');
+    return;
+  }
+
+  console.log('Setting up push credentials for user:', user.id);
+
+  // Request notification permission if not already granted
+  if (Notification.permission === 'default') {
+    const permission = await Notification.requestPermission();
+    console.log('Notification permission:', permission);
+    
+    if (permission !== 'granted') {
+      console.log('User denied push notification permission');
+      return;
+    }
+  } else if (Notification.permission === 'denied') {
+    console.log('Push notifications are blocked by user');
+    return;
+  }
+
+  console.log('Notification permission granted, registering service worker...');
+
+  // Register service worker
+  const registration = await navigator.serviceWorker.register('/novu-sw.js');
+  console.log('Service worker registered:', registration);
+
+  // Wait for service worker to be ready
+  await navigator.serviceWorker.ready;
+
+  // Get existing subscription or create new one
+  let subscription = await registration.pushManager.getSubscription();
+  
+  if (!subscription) {
+    // Subscribe to push notifications
+    const vapidPublicKey = process.env.NEXT_PUBLIC_NOVU_VAPID_PUBLIC_KEY;
+    
+    subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: vapidPublicKey || undefined
+    });
+    
+    console.log('Push subscription created:', subscription);
+  } else {
+    console.log('Push subscription already exists:', subscription);
+  }
+
+  // Register the push credentials
+  await registerPushCredentials(user.id, subscription);
+}
+
+/**
+ * Register the subscriber with Novu (without push credentials)
  * Now uses server-side API endpoints for security
  */
-async function registerSubscriberWithNovu(
-  user: any, // User type from @/types/database.types
-  subscription: PushSubscription
-) {
+async function registerSubscriberWithNovu(user: any) {
   try {
-    console.log('Registering subscriber with Novu:', user.id);
+    console.log('📝 Registering subscriber with Novu:', user.id);
 
     // Fetch profile data to get first_name and last_name
     let firstName = '';
@@ -121,21 +137,36 @@ async function registerSubscriberWithNovu(
       );
       firstName = profile.first_name || '';
       lastName = profile.last_name || '';
-      console.log('Profile data fetched:', { firstName, lastName, email: user.email });
+      console.log('✅ Profile data fetched for Novu:', { 
+        userId: user.id,
+        firstName, 
+        lastName, 
+        email: user.email 
+      });
     } catch (profileError) {
-      console.error('Error fetching profile for Novu registration:', profileError);
+      console.error('❌ Error fetching profile for Novu registration:', profileError);
       // Fall back to user object if available
       firstName = user.first_name || '';
       lastName = user.last_name || '';
+      console.log('⚠️ Using fallback user data:', { firstName, lastName });
     }
 
     // Register subscriber via server-side API (secure)
+    console.log('🚀 Calling /api/novu/register-subscriber with:', {
+      subscriberId: user.id,
+      email: user.email,
+      firstName: firstName,
+      lastName: lastName,
+    });
+
     const subscriberResponse = await fetch('/api/novu/register-subscriber', {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
+        subscriberId: user.id,
         email: user.email,
         firstName: firstName,
         lastName: lastName,
@@ -144,17 +175,19 @@ async function registerSubscriberWithNovu(
 
     if (!subscriberResponse.ok) {
       const error = await subscriberResponse.text();
-      console.error('Failed to register subscriber:', error);
-      return;
+      console.error('❌ Failed to register subscriber:', {
+        status: subscriberResponse.status,
+        statusText: subscriberResponse.statusText,
+        error
+      });
+      throw new Error(`Failed to register subscriber: ${error}`);
     }
 
-    console.log('Subscriber registered with Novu');
-
-    // Now register the push credentials via server-side API
-    await registerPushCredentials(user.id, subscription);
-
+    const subscriberData = await subscriberResponse.json();
+    console.log('✅ Subscriber registered with Novu:', subscriberData);
   } catch (error) {
-    console.error('Failed to register with Novu:', error);
+    console.error('❌ Failed to register subscriber with Novu:', error);
+    throw error;
   }
 }
 
@@ -174,6 +207,7 @@ async function registerPushCredentials(
     // Use server-side API endpoint for secure registration
     const response = await fetch('/api/novu/register-push', {
       method: 'POST',
+      credentials: 'include', // Ensure cookies are sent for authentication
       headers: {
         'Content-Type': 'application/json',
       },
@@ -223,7 +257,7 @@ export async function unsubscribeFromPush() {
  * @param lastName - The user's last name
  */
 export async function updateNovuSubscriber(
-  userId: string, // Kept for backwards compatibility but not sent to server
+  userId: string,
   email: string,
   firstName?: string,
   lastName?: string
@@ -233,10 +267,12 @@ export async function updateNovuSubscriber(
     
     const response = await fetch('/api/novu/update-subscriber', {
       method: 'PUT',
+      credentials: 'include', // Ensure cookies are sent for authentication
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
+        subscriberId: userId,
         email: email,
         firstName: firstName || '',
         lastName: lastName || '',
