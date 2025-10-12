@@ -2,14 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { pb } from '@/lib/pocketbase';
-import { usePermissions } from '@/contexts/PermissionContext';
+import { createBrowserClient } from '@/lib/supabase';
+import { usePermissions } from '@/contexts/PermissionsContext';
 
 import LoadingSpinner from '@/components/LoadingSpinner';
-import { Role } from '@/types/database.types';
+import { Role } from '@/types/supabase.types';
 
 interface UserProfile {
-  user_id: string;
+  id: string;
   email: string;
   first_name: string;
   last_name: string;
@@ -90,13 +90,13 @@ function UserDetailsModal({ user, roles, onClose, onRoleChange }: UserDetailsMod
                 value={currentRole}
                 onChange={(e) => {
                   if (currentRole) {
-                    onRoleChange(user.user_id, currentRole, 'remove').then(() => {
+                    onRoleChange(user.id, currentRole, 'remove').then(() => {
                       if (e.target.value) {
-                        onRoleChange(user.user_id, e.target.value, 'add');
+                        onRoleChange(user.id, e.target.value, 'add');
                       }
                     });
                   } else if (e.target.value) {
-                    onRoleChange(user.user_id, e.target.value, 'add');
+                    onRoleChange(user.id, e.target.value, 'add');
                   }
                 }}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
@@ -156,78 +156,146 @@ export default function UserManagement() {
 
   const fetchData = async () => {
     try {
-      // Fetch all users
-      const usersData = await pb.collection('users').getFullList({
-        sort: 'email'
-      });
+      const supabase = createBrowserClient();
 
-      // Fetch all profiles
-      const profilesData = await pb.collection('profiles').getFullList();
-      const profilesMap = new Map(profilesData.map((p: any) => [p.user_id, p]));
+      // Fetch all users from auth.users via admin API or profiles
+      const { data: { users: authUsers }, error: usersError } = await supabase.auth.admin.listUsers();
+      
+      if (usersError) {
+        console.error('Error fetching auth users:', usersError);
+        // Fallback: fetch from profiles instead
+        const { data: profilesData, error: profilesError } = await supabase
+          .from('profiles')
+          .select('*')
+          .order('created_at');
+        
+        if (profilesError) throw profilesError;
+        
+        // Use profiles as users
+        const { data: userRolesData, error: rolesError } = await supabase
+          .from('user_roles')
+          .select('*, role_id(*)');
+        
+        if (rolesError) throw rolesError;
 
-      // Fetch all user roles
-      const userRolesData = await pb.collection('user_roles').getFullList({
-        expand: 'role_id'
-      });
+        const { data: rolesData, error: rolesListError } = await supabase
+          .from('roles')
+          .select('*, role_permissions_via_role_id(*, permission_id(*))')
+          .order('name');
+        
+        if (rolesListError) throw rolesListError;
+        
+        setRoles(rolesData as Role[]);
 
-      // Fetch all roles
-      const rolesData = await pb.collection('roles').getFullList({
-        expand: 'role_permissions_via_role_id.permission_id',
-        sort: 'name'
-      });
+        // Group roles and permissions by user
+        const rolesByUser = new Map<string, string[]>();
+        const permissionsByUser = new Map<string, Set<string>>();
+
+        userRolesData?.forEach((userRole: any) => {
+          const userId = userRole.user_id;
+          const role = userRole.role_id;
+          
+          if (role) {
+            if (!rolesByUser.has(userId)) {
+              rolesByUser.set(userId, []);
+            }
+            rolesByUser.get(userId)!.push(role.name);
+
+            if (!permissionsByUser.has(userId)) {
+              permissionsByUser.set(userId, new Set());
+            }
+            
+            const roleData = rolesData?.find((r: any) => r.id === role.id);
+            if (roleData?.role_permissions_via_role_id) {
+              roleData.role_permissions_via_role_id.forEach((rp: any) => {
+                if (rp.permission_id?.name) {
+                  permissionsByUser.get(userId)!.add(rp.permission_id.name);
+                }
+              });
+            }
+          }
+        });
+
+        const combinedUsers: UserProfile[] = profilesData.map((profile: any) => {
+          return {
+            id: profile.id,
+            email: profile.email || 'No email',
+            first_name: profile.first_name || '',
+            last_name: profile.last_name || '',
+            nickname: profile.nickname || '',
+            photo_url: profile.avatar || profile.photo_url || null,
+            roles: rolesByUser.get(profile.id) || [],
+            permissions: Array.from(permissionsByUser.get(profile.id) || [])
+          };
+        });
+
+        setUsers(combinedUsers);
+        return;
+      }
+
+      // If we successfully got auth users, continue with normal flow
+      const { data: profilesData, error: profilesError } = await supabase
+        .from('profiles')
+        .select('*');
+      
+      if (profilesError) throw profilesError;
+      
+      const profilesMap = new Map(profilesData.map((p: any) => [p.id, p]));
+
+      const { data: userRolesData, error: userRolesError } = await supabase
+        .from('user_roles')
+        .select('*, role_id(*)');
+
+      if (userRolesError) throw userRolesError;
+
+      const { data: rolesData, error: rolesError } = await supabase
+        .from('roles')
+        .select('*, role_permissions_via_role_id(*, permission_id(*))')
+        .order('name');
+      
+      if (rolesError) throw rolesError;
+      
       setRoles(rolesData as Role[]);
 
       // Group roles and permissions by user
       const rolesByUser = new Map<string, string[]>();
       const permissionsByUser = new Map<string, Set<string>>();
 
-      userRolesData.forEach((userRole: any) => {
+      userRolesData?.forEach((userRole: any) => {
         const userId = userRole.user_id;
-        const role = userRole.expand?.role_id;
+        const role = userRole.role_id;
         
         if (role) {
-          // Add role name
           if (!rolesByUser.has(userId)) {
             rolesByUser.set(userId, []);
           }
           rolesByUser.get(userId)!.push(role.name);
 
-          // Add permissions from role
           if (!permissionsByUser.has(userId)) {
             permissionsByUser.set(userId, new Set());
           }
           
-          // Get permissions for this role
-          const rolePermissions = rolesData.find((r: any) => r.id === role.id);
-          if (rolePermissions?.expand?.role_permissions_via_role_id) {
-            rolePermissions.expand.role_permissions_via_role_id.forEach((rp: any) => {
-              if (rp.expand?.permission_id?.name) {
-                permissionsByUser.get(userId)!.add(rp.expand.permission_id.name);
+          const roleData = rolesData?.find((r: any) => r.id === role.id);
+          if (roleData?.role_permissions_via_role_id) {
+            roleData.role_permissions_via_role_id.forEach((rp: any) => {
+              if (rp.permission_id?.name) {
+                permissionsByUser.get(userId)!.add(rp.permission_id.name);
               }
             });
           }
         }
       });
 
-      // Combine all user data
-      const combinedUsers: UserProfile[] = usersData.map((u: any) => {
+      const combinedUsers: UserProfile[] = authUsers.map((u: any) => {
         const profile = profilesMap.get(u.id);
         
-        // Get the photo URL - prioritize profile photo, then user avatar
-        let photoUrl = null;
-        if (profile?.photo_url) {
-          photoUrl = pb.files.getURL(profile, profile.photo_url);
-        } else if (u.avatar) {
-          photoUrl = pb.files.getURL(u, u.avatar);
-        }
-        
         return {
-          user_id: u.id,
-          email: u.email,
+          id: u.id,
+          email: u.email || '',
           first_name: profile?.first_name || '',
           last_name: profile?.last_name || '',
           nickname: profile?.nickname || '',
-          photo_url: photoUrl,
+          photo_url: profile?.avatar || profile?.photo_url || null,
           roles: rolesByUser.get(u.id) || [],
           permissions: Array.from(permissionsByUser.get(u.id) || [])
         };
@@ -248,6 +316,8 @@ export default function UserManagement() {
     setSuccess('');
 
     try {
+      const supabase = createBrowserClient();
+
       if (action === 'add') {
         // Find the role by name
         const role = roles.find(r => r.name === roleName);
@@ -257,22 +327,29 @@ export default function UserManagement() {
         }
 
         // Check if user already has this role
-        const existingUserRole = await pb.collection('user_roles').getFirstListItem(
-          `user_id = "${userId}" && role_id = "${role.id}"`
-        ).catch(() => null);
+        const { data: existingUserRole, error: checkError } = await supabase
+          .from('user_roles')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('role_id', role.id)
+          .single();
 
-        if (existingUserRole) {
+        if (!checkError && existingUserRole) {
           setError('User already has this role');
           return;
         }
 
         // Create the user role
-        await pb.collection('user_roles').create({
-          user_id: userId,
-          role_id: role.id,
-          assigned_by: user?.id,
-          assigned_at: new Date().toISOString()
-        });
+        const { error: insertError } = await supabase
+          .from('user_roles')
+          .insert([{
+            user_id: userId,
+            role_id: role.id,
+            assigned_by: user?.id,
+            assigned_at: new Date().toISOString()
+          }]);
+
+        if (insertError) throw insertError;
 
         setSuccess('Role assigned successfully');
       } else {
@@ -283,24 +360,23 @@ export default function UserManagement() {
           return;
         }
 
-        // Find and delete the user role
-        const userRole = await pb.collection('user_roles').getFirstListItem(
-          `user_id = "${userId}" && role_id = "${role.id}"`
-        );
+        // Delete the user role
+        const { error: deleteError } = await supabase
+          .from('user_roles')
+          .delete()
+          .eq('user_id', userId)
+          .eq('role_id', role.id);
 
-        if (userRole) {
-          await pb.collection('user_roles').delete(userRole.id);
-          setSuccess('Role removed successfully');
-        } else {
-          setError('User role not found');
-        }
+        if (deleteError) throw deleteError;
+
+        setSuccess('Role removed successfully');
       }
 
       await fetchData();
       
       // Update the selected user if they're currently being viewed
-      if (selectedUser?.user_id === userId) {
-        const updatedUser = users.find(u => u.user_id === userId);
+      if (selectedUser?.id === userId) {
+        const updatedUser = users.find(u => u.id === userId);
         if (updatedUser) setSelectedUser(updatedUser);
       }
     } catch (error) {
@@ -353,7 +429,7 @@ export default function UserManagement() {
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {users.map((user) => (
-                      <tr key={user.user_id} className="hover:bg-gray-50">
+                      <tr key={user.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center">
                             <div className="flex-shrink-0">

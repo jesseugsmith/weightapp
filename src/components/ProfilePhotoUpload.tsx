@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import { pb } from '@/lib/pocketbase';
+import { createBrowserClient } from '@/lib/supabase';
 import Image from 'next/image';
 
 interface ProfilePhotoUploadProps {
@@ -45,19 +45,37 @@ export default function ProfilePhotoUpload({
         throw new Error('Image size must be less than 5MB');
       }
 
-      // Create FormData for file upload
-      const formData = new FormData();
-      formData.append('avatar', file);
+      const supabase = createBrowserClient();
+      
+      // Generate a unique filename
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${userId}-${Date.now()}.${fileExt}`;
+      const filePath = `avatars/${fileName}`;
 
-      // Update the user profile with the new avatar
-      const updatedProfile = await pb.collection('profiles').update(userId, formData);
+      // Upload to Supabase Storage
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
 
-      // Get the avatar URL
-      const avatarUrl = updatedProfile.avatar 
-        ? pb.files.getURL(updatedProfile, updatedProfile.avatar)
-        : null;
+      if (uploadError) throw uploadError;
 
-      onPhotoUpdate(avatarUrl);
+      // Get the public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+
+      // Update the profile with the avatar URL
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar: publicUrl })
+        .eq('id', userId);
+
+      if (updateError) throw updateError;
+
+      onPhotoUpdate(publicUrl);
     } catch (err) {
       console.error('Error uploading photo:', err);
       setError(err instanceof Error ? err.message : 'Failed to upload photo');
@@ -71,10 +89,15 @@ export default function ProfilePhotoUpload({
       setIsUploading(true);
       setError(null);
 
+      const supabase = createBrowserClient();
+
       // Update the profile to remove the avatar
-      await pb.collection('profiles').update(userId, {
-        avatar: null
-      });
+      const { error } = await supabase
+        .from('profiles')
+        .update({ avatar: null })
+        .eq('id', userId);
+
+      if (error) throw error;
 
       onPhotoUpdate(null);
     } catch (error) {

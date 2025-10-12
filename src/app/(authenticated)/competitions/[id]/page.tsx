@@ -2,53 +2,63 @@
 
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
-import { pb } from '@/lib/pocketbase';
-import { Competition, Prize } from '@/types/database.types';
-import { isAdmin as checkIsAdmin } from '@/utils/permissions';
+import { createBrowserClient } from '@/lib/supabase';
+import { Competition, Prize } from '@/types/supabase.types';
+import { usePermissions } from '@/contexts/PermissionsContext';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { useAuth } from '@/hooks/useAuth';
 import LeaderboardCard from '@/components/LeaderboardCard';
-import { competitionService} from '@/utils/dataService';
 import EditCompetitionModal from '@/components/EditCompetitionModal';
 
 export default function CompetitionDetails() {
   const params = useParams();
   const { user } = useAuth();
+  const { hasPermission } = usePermissions();
   const [competition, setCompetition] = useState<Competition | null>(null);
   const [prizes, setPrizes] = useState<Prize[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
   const [sending, setSending] = useState(false);
   const [startingCompetition, setStartingCompetition] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [participantCount, setParticipantCount] = useState(0);
 
-  useEffect(() => {
-    async function checkAdminStatus() {
-      const adminStatus = await checkIsAdmin();
-      setIsAdmin(adminStatus);
-    }
+  const isAdmin = hasPermission('manage_competitions');
 
+  useEffect(() => {
     async function fetchCompetitionDetails() {
       try {
+        const supabase = createBrowserClient();
+
         // Fetch competition details
-        const competitionData = await pb.collection('competitions').getOne(params.id as string);
-        setCompetition(competitionData as Competition);
+        const { data: competitionData, error: compError } = await supabase
+          .from('competitions')
+          .select('*')
+          .eq('id', params.id as string)
+          .single();
+
+        if (compError) throw compError;
+        setCompetition(competitionData);
 
         // Fetch prizes for this competition
-        const prizesData = await pb.collection('prizes').getFullList({
-          filter: `competition_id = "${params.id}"`,
-          sort: 'rank'
-        });
-        setPrizes(prizesData as Prize[]);
+        const { data: prizesData, error: prizesError } = await supabase
+          .from('prizes')
+          .select('*')
+          .eq('competition_id', params.id as string)
+          .order('rank', { ascending: true });
+
+        if (prizesError) throw prizesError;
+        setPrizes(prizesData || []);
 
         // Fetch participant count
-        const participants = await pb.collection('competition_participants').getFullList({
-          filter: `competition_id = "${params.id}"`
-        });
-        setParticipantCount(participants.length);
+        const { data: participants, error: participantsError } = await supabase
+          .from('competition_participants')
+          .select('id')
+          .eq('competition_id', params.id as string);
+
+        if (participantsError) throw participantsError;
+        setParticipantCount(participants?.length || 0);
 
       } catch (err) {
         console.error('Error fetching competition details:', err);
@@ -59,10 +69,9 @@ export default function CompetitionDetails() {
     }
 
     if (params.id) {
-      checkAdminStatus();
       fetchCompetitionDetails();
     }
-  }, [params.id]);
+  }, [params.id, hasPermission]);
 
   const handleStartCompetition = async () => {
     if (!competition || !user) return;
@@ -72,12 +81,17 @@ export default function CompetitionDetails() {
     setSuccess(null);
     
     try {
+      const supabase = createBrowserClient();
+      
       // Update competition status to 'started'
-      const comp = await competitionService.startCompetition(competition.id);
-      if (!comp) {
-        throw new Error('Failed to start competition');
-      }
-      //setCompetition(updatedCompetition as Competition);
+      const { error: updateError } = await supabase
+        .from('competitions')
+        .update({ status: 'started' })
+        .eq('id', competition.id);
+
+      if (updateError) throw updateError;
+
+      setCompetition({ ...competition, status: 'started' });
       setSuccess('Competition started successfully! Participants can now begin logging their progress.');
       
     } catch (err) {
@@ -124,20 +138,34 @@ export default function CompetitionDetails() {
     setError(null);
     
     try {
-      const competitionData = await pb.collection('competitions').getOne(params.id as string);
-      setCompetition(competitionData as Competition);
+      const supabase = createBrowserClient();
 
-      const prizesData = await pb.collection('prizes').getFullList({
-        filter: `competition_id = "${params.id}"`,
-        sort: 'rank'
-      });
-      setPrizes(prizesData as Prize[]);
+      const { data: competitionData, error: compError } = await supabase
+        .from('competitions')
+        .select('*')
+        .eq('id', params.id as string)
+        .single();
+
+      if (compError) throw compError;
+      setCompetition(competitionData);
+
+      const { data: prizesData, error: prizesError } = await supabase
+        .from('prizes')
+        .select('*')
+        .eq('competition_id', params.id as string)
+        .order('rank', { ascending: true });
+
+      if (prizesError) throw prizesError;
+      setPrizes(prizesData || []);
 
       // Refresh participant count
-      const participants = await pb.collection('competition_participants').getFullList({
-        filter: `competition_id = "${params.id}"`
-      });
-      setParticipantCount(participants.length);
+      const { data: participants, error: participantsError } = await supabase
+        .from('competition_participants')
+        .select('id')
+        .eq('competition_id', params.id as string);
+
+      if (participantsError) throw participantsError;
+      setParticipantCount(participants?.length || 0);
 
       setSuccess('Competition updated successfully!');
       setTimeout(() => setSuccess(null), 3000);

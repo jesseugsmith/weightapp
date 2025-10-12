@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAuth } from '@/lib/serverAuth';
-import PocketBase from 'pocketbase/cjs';
+import { getAuthenticatedSupabase } from '@/lib/serverAuth';
 
 /**
  * API endpoint to send a test notification with first and last name
@@ -8,14 +7,16 @@ import PocketBase from 'pocketbase/cjs';
  */
 export async function POST(request: NextRequest) {
   try {
-    // Verify authentication
-    const user = await verifyAuth(request);
-    if (!user) {
+    // Verify authentication and get Supabase client
+    const authResult = await getAuthenticatedSupabase(request);
+    if (!authResult) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       );
     }
+
+    const { supabase, user } = authResult;
 
     // Get Novu API key from environment (server-side only)
     const novuApiKey = process.env.NOVU_API_KEY;
@@ -28,17 +29,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Initialize PocketBase to get user profile
-    const pb = new PocketBase(process.env.NEXT_PUBLIC_POCKETBASE_URL);
-
     // Get user profile for first and last name
     let firstName = '';
     let lastName = '';
 
     try {
-      const profile = await pb.collection('profiles').getFirstListItem(`user_id = "${user.id}"`);
-      firstName = profile.first_name || '';
-      lastName = profile.last_name || '';
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('first_name, last_name')
+        .eq('id', user.id)
+        .single();
+      
+      if (!error && profile) {
+        firstName = profile.first_name || '';
+        lastName = profile.last_name || '';
+      }
     } catch (error) {
       console.warn('Profile not found, using empty names');
     }

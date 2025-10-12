@@ -2,11 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { pb } from '@/lib/pocketbase';
-import { usePermissions } from '@/contexts/PermissionContext';
+import { createBrowserClient } from '@/lib/supabase';
+import { usePermissions } from '@/contexts/PermissionsContext';
 
 import LoadingSpinner from '@/components/LoadingSpinner';
-import { Role, Permission, UserRole, User } from '@/types/database.types';
+import { Role, UserRole, PermissionType } from '@/types/supabase.types';
 
 interface UserWithRoles {
   id: string;
@@ -20,7 +20,7 @@ export default function RoleManagement() {
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState<UserWithRoles[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
-  const [permissions, setPermissions] = useState<Permission[]>([]);
+  const [permissions, setPermissions] = useState<PermissionType[]>([]);
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
   const [selectedRole, setSelectedRole] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -40,18 +40,27 @@ export default function RoleManagement() {
 
   const fetchRolesAndPermissions = async () => {
     try {
+      const supabase = createBrowserClient();
+
       // Fetch roles with their permissions
-      const rolesData = await pb.collection('roles').getFullList({
-        expand: 'role_permissions_via_role_id.permission_id',
-        sort: 'name'
-      });
+      const { data: rolesData, error: rolesError } = await supabase
+        .from('roles')
+        .select('*, role_permissions_via_role_id(*, permission_id(*))')
+        .order('name');
+      
+      if (rolesError) throw rolesError;
+      
       setRoles(rolesData as Role[]);
 
       // Fetch all permissions
-      const permsData = await pb.collection('permissions').getFullList({
-        sort: 'name'
-      });
-      setPermissions(permsData as Permission[]);
+      const { data: permsData, error: permsError } = await supabase
+        .from('permissions')
+        .select('*')
+        .order('name');
+      
+      if (permsError) throw permsError;
+      
+      setPermissions(permsData as PermissionType[]);
     } catch (error) {
       console.error('Error fetching roles and permissions:', error);
       setError('Failed to fetch roles and permissions');
@@ -60,25 +69,54 @@ export default function RoleManagement() {
 
   const fetchUsers = async () => {
     try {
-      // Fetch all users
-      const usersData = await pb.collection('users').getFullList({
-        sort: 'email'
-      });
+      const supabase = createBrowserClient();
 
-      // Fetch user roles with expansions
-      const userRolesData = await pb.collection('user_roles').getFullList({
-        expand: 'role_id'
-      });
+      // Try to fetch from auth.users first
+      const { data: { users: authUsers }, error: authError } = await supabase.auth.admin.listUsers();
+      
+      let usersData: any[] = [];
+      
+      if (authError || !authUsers) {
+        // Fallback: fetch from profiles
+        const { data: profilesData, error: profilesError } = await supabase
+          .from('profiles')
+          .select('*')
+          .order('created_at');
+        
+        if (profilesError) throw profilesError;
+        
+        usersData = profilesData.map(p => ({
+          id: p.id,
+          email: p.email || 'No email'
+        }));
+      } else {
+        usersData = authUsers.map(u => ({
+          id: u.id,
+          email: u.email || ''
+        }));
+      }
 
-      // Fetch profiles to get first_name and last_name
-      const profilesData = await pb.collection('profiles').getFullList();
-      const profilesMap = new Map(profilesData.map(p => [p.user_id, p]));
+      // Fetch user roles
+      const { data: userRolesData, error: userRolesError } = await supabase
+        .from('user_roles')
+        .select('*, role_id(*)');
+      
+      if (userRolesError) throw userRolesError;
+
+      // Fetch profiles to get names
+      const { data: profilesData, error: profilesError } = await supabase
+        .from('profiles')
+        .select('*');
+      
+      if (profilesError) throw profilesError;
+      
+      const profilesMap = new Map(profilesData.map((p: any) => [p.id, p]));
 
       // Group roles by user
       const rolesByUser = new Map<string, Role[]>();
-      userRolesData.forEach((userRole: any) => {
+      userRolesData?.forEach((userRole: any) => {
         const userId = userRole.user_id;
-        const role = userRole.expand?.role_id;
+        const role = userRole.role_id;
         if (role) {
           if (!rolesByUser.has(userId)) {
             rolesByUser.set(userId, []);
@@ -115,30 +153,40 @@ export default function RoleManagement() {
     setSuccess('');
 
     try {
+      const supabase = createBrowserClient();
+
       // Find the role by name
       const role = roles.find(r => r.name === selectedRole);
+      
       if (!role) {
         setError('Role not found');
         return;
       }
 
       // Check if user already has this role
-      const existingUserRole = await pb.collection('user_roles').getFirstListItem(
-        `user_id = "${selectedUser}" && role_id = "${role.id}"`
-      ).catch(() => null);
+      const { data: existingUserRole, error: checkError } = await supabase
+        .from('user_roles')
+        .select('*')
+        .eq('user_id', selectedUser)
+        .eq('role_id', role.id)
+        .single();
 
-      if (existingUserRole) {
+      if (!checkError && existingUserRole) {
         setError('User already has this role');
         return;
       }
 
       // Create the user role
-      await pb.collection('user_roles').create({
-        user_id: selectedUser,
-        role_id: role.id,
-        assigned_by: user?.id,
-        assigned_at: new Date().toISOString()
-      });
+      const { error: insertError } = await supabase
+        .from('user_roles')
+        .insert([{
+          user_id: selectedUser,
+          role_id: role.id,
+          assigned_by: user?.id,
+          assigned_at: new Date().toISOString()
+        }]);
+
+      if (insertError) throw insertError;
 
       setSuccess('Role assigned successfully');
       fetchUsers(); // Refresh the user list
@@ -155,6 +203,8 @@ export default function RoleManagement() {
     setSuccess('');
 
     try {
+      const supabase = createBrowserClient();
+
       // Find the role by name
       const role = roles.find(r => r.name === roleName);
       if (!role) {
@@ -162,18 +212,17 @@ export default function RoleManagement() {
         return;
       }
 
-      // Find and delete the user role
-      const userRole = await pb.collection('user_roles').getFirstListItem(
-        `user_id = "${userId}" && role_id = "${role.id}"`
-      );
+      // Delete the user role
+      const { error: deleteError } = await supabase
+        .from('user_roles')
+        .delete()
+        .eq('user_id', userId)
+        .eq('role_id', role.id);
 
-      if (userRole) {
-        await pb.collection('user_roles').delete(userRole.id);
-        setSuccess('Role removed successfully');
-        fetchUsers(); // Refresh the user list
-      } else {
-        setError('User role not found');
-      }
+      if (deleteError) throw deleteError;
+
+      setSuccess('Role removed successfully');
+      fetchUsers(); // Refresh the user list
     } catch (error) {
       console.error('Error removing role:', error);
       setError('Failed to remove role');

@@ -4,8 +4,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import FitClashLogo from './FitClashLogo';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
-import { usePermissions } from '@/contexts/PermissionContext';
-import { pb } from '@/lib/pocketbase';
+import { usePermissions } from '@/contexts/PermissionsContext';
 import { useState } from 'react';
 import Image from 'next/image';
 
@@ -72,16 +71,20 @@ export default function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed
 
   const sidebarWidth = isCollapsed ? 'w-16' : 'w-64';
 
-  // Get avatar URL from user or profile
+  // Get avatar URL from profile (Supabase version)
   const getAvatarUrl = () => {
-    // First try to get avatar from user object
-    if (user && user.avatar) {
-      return pb.files.getURL(user, user.avatar);
-    }
+    // Supabase stores avatars in the profiles table or storage buckets
     if (profile && profile.avatar) {
-      return pb.files.getURL(profile, profile.avatar);
+      // If avatar is a full URL (from storage)
+      if (profile.avatar.startsWith('http')) {
+        return profile.avatar;
+      }
+      // If avatar is a storage path, construct the URL
+      // You'll need to implement storage bucket logic if using Supabase Storage
+      // For now, return the path as-is or a placeholder
+      return profile.avatar;
     }
-    return '/default-avatar.svg';
+    return null;
   };
 
   const avatarUrl = getAvatarUrl();

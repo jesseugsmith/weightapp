@@ -15,7 +15,7 @@ import {
 import { Copy, Key, Plus, Trash2, Eye, EyeOff, AlertCircle, Smartphone } from 'lucide-react';
 import { toast } from 'sonner';
 import Link from 'next/link';
-import { pb } from '@/lib/pocketbase';
+import { createBrowserClient } from '@/lib/supabase';
 
 interface ApiToken {
   id: string;
@@ -44,15 +44,17 @@ export default function ApiTokenManager() {
 
   const fetchTokens = async () => {
     try {
-      const token = pb.authStore.token;
-      if (!token) {
+      const supabase = createBrowserClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.access_token) {
         toast.error('Not authenticated');
         return;
       }
 
       const response = await fetch('/api/tokens', {
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${session.access_token}`,
         },
       });
       if (response.ok) {
@@ -76,8 +78,10 @@ export default function ApiTokenManager() {
     }
 
     try {
-      const token = pb.authStore.token;
-      if (!token) {
+      const supabase = createBrowserClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.access_token) {
         toast.error('Not authenticated');
         return;
       }
@@ -88,7 +92,7 @@ export default function ApiTokenManager() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({ name: newTokenName, expires_in_days }),
       });
@@ -118,8 +122,10 @@ export default function ApiTokenManager() {
     }
 
     try {
-      const token = pb.authStore.token;
-      if (!token) {
+      const supabase = createBrowserClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.access_token) {
         toast.error('Not authenticated');
         return;
       }
@@ -127,7 +133,7 @@ export default function ApiTokenManager() {
       const response = await fetch(`/api/tokens?id=${tokenId}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${session.access_token}`,
         },
       });
 
@@ -146,8 +152,10 @@ export default function ApiTokenManager() {
 
   const toggleTokenActive = async (tokenId: string, isActive: boolean) => {
     try {
-      const token = pb.authStore.token;
-      if (!token) {
+      const supabase = createBrowserClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.access_token) {
         toast.error('Not authenticated');
         return;
       }
@@ -156,7 +164,7 @@ export default function ApiTokenManager() {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({ is_active: !isActive }),
       });

@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useMemo } from "react"
+import { useMemo, useEffect, useState } from "react"
 import {
   BookOpen,
   Bot,
@@ -34,10 +34,10 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { usePermissions } from "@/contexts/PermissionContext"
+import { usePermissions } from "@/contexts/PermissionsContext"
 import { useAuth } from "@/hooks/useAuth"
-import { useProfile } from "@/hooks/useProfile"
-import pb from "@/lib/pocketbase"
+import { createBrowserClient } from "@/lib/supabase"
+import type { Profile } from "@/types/supabase.types"
 import { usePathname, useRouter } from "next/navigation"
 
 const data = {
@@ -71,9 +71,29 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     const router = useRouter();
     const pathname = usePathname();
     const { user, signOut } = useAuth();
-    const { profile } = useProfile();
     const { hasPermission, hasRole } = usePermissions();
     const [isLogWeightModalOpen, setIsLogWeightModalOpen] = React.useState(false);
+    const [profile, setProfile] = useState<Profile | null>(null);
+    const supabase = createBrowserClient();
+    
+    // Fetch user profile
+    useEffect(() => {
+      const fetchProfile = async () => {
+        if (!user?.id) return;
+        
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+        
+        if (!error && data) {
+          setProfile(data);
+        }
+      };
+      
+      fetchProfile();
+    }, [user?.id, supabase]);
     
     // Check if user has any admin permissions
     const hasAdminAccess = hasPermission('manage_users') || 
@@ -135,11 +155,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         user: {
           name: profile?.first_name && profile?.last_name 
             ? `${profile.first_name} ${profile.last_name}` 
-            : "User",
+            : profile?.first_name || "User",
           email: user?.email || '',
-          avatar: user?.avatar 
-            ? pb.files.getURL(user, user.avatar) 
-            : '/avatars/default.png',
+          avatar: profile?.avatar || '/default-avatar.svg',
         },
         navMain,
         navSecondary: [
@@ -170,24 +188,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       router.push('/signin');
     };
   
-    // Get avatar URL from user or profile
-    const getAvatarUrl = () => {
-      // First try to get avatar from user object
-      if (user?.avatar) {
-        return pb.files.getURL(user, user.avatar);
-      }
-      // Then try from profile
-      if (profile?.avatar) {
-        return pb.files.getURL(profile, profile.avatar);
-      }
-      // Try photo_url from profile
-      if (profile?.photo_url) {
-        return profile.photo_url;
-      }
-      return null;
-    };
-  
-    const avatarUrl = getAvatarUrl();
   return (
     <Sidebar variant="inset" {...props}>
       <SidebarHeader> 

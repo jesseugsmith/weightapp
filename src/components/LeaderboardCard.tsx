@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { createBrowserClient } from '@/lib/supabase';
 import { standingsService, type StandingWithUser } from '@/utils/standingsService';
-import type { Competition, Prize } from '@/types/database.types';
+import type { Competition, Prize } from '@/types/supabase.types';
 import LoadingSpinner from './LoadingSpinner';
-import { pb } from '@/lib/pocketbase';
 
 interface LeaderboardCardProps {
   competitionId: string;
@@ -33,21 +33,29 @@ export default function LeaderboardCard({
     async function fetchLeaderboard() {
       try {
         setError(null);
+        const supabase = createBrowserClient();
+        
         const data = await standingsService.getLeaderboard(competitionId);
         setLeaderboard(data);
         
         // Fetch prizes for this competition
-        const prizesData = await pb.collection('prizes').getFullList({
-          filter: `competition_id = "${competitionId}"`,
-          sort: 'rank'
-        });
-        setPrizes(prizesData as Prize[]);
+        const { data: prizesData, error: prizesError } = await supabase
+          .from('prizes')
+          .select('*')
+          .eq('competition_id', competitionId)
+          .order('rank', { ascending: true });
+
+        if (prizesError) throw prizesError;
+        setPrizes(prizesData || []);
         
         // Fetch participant count
-        const participants = await pb.collection('competition_participants').getFullList({
-          filter: `competition_id = "${competitionId}"`
-        });
-        setParticipantCount(participants.length);
+        const { data: participants, error: participantsError } = await supabase
+          .from('competition_participants')
+          .select('id')
+          .eq('competition_id', competitionId);
+
+        if (participantsError) throw participantsError;
+        setParticipantCount(participants?.length || 0);
       } catch (err) {
         console.error('Error fetching leaderboard:', err);
         setError('Failed to load leaderboard');
@@ -260,26 +268,16 @@ export default function LeaderboardCard({
                           {/* Prize */}
                           {prize && (
                             <div className="mb-2 md:mb-3 pb-2 md:pb-3 border-b border-border/50">
-                              {prize.currency === 'PERCENT' ? (
-                                <>
-                                  <div className="text-sm md:text-lg font-bold text-green-600 dark:text-green-500">
-                                    ${calculatePrizeAmount(prize.value || 0).toFixed(0)}
-                                  </div>
-                                  <div className="text-[10px] md:text-xs text-muted-foreground mt-1 hidden md:block">
-                                    {prize.value}% of pool
-                                  </div>
-                                </>
-                              ) : (
-                                <>
-                                  <div className="text-sm md:text-lg font-bold text-green-600 dark:text-green-500">
-                                    {prize.value ? `$${prize.value.toLocaleString()}` : 'TBD'}
-                                  </div>
-                                  {prize.description && (
-                                    <div className="text-[10px] md:text-xs text-muted-foreground mt-1 line-clamp-2 hidden md:block">
-                                      {prize.description}
-                                    </div>
-                                  )}
-                                </>
+                              <div className="text-sm md:text-lg font-bold text-green-600 dark:text-green-500">
+                                ${calculatePrizeAmount(prize.prize_amount || 0).toFixed(0)}
+                              </div>
+                              <div className="text-[10px] md:text-xs text-muted-foreground mt-1 hidden md:block">
+                                {prize.prize_amount}% of pool
+                              </div>
+                              {prize.prize_description && (
+                                <div className="text-[10px] md:text-xs text-muted-foreground mt-1 line-clamp-2 hidden md:block">
+                                  {prize.prize_description}
+                                </div>
                               )}
                             </div>
                           )}

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
-import { pb } from '@/lib/pocketbase';
+import { createBrowserClient } from '@/lib/supabase';
 
 import LoadingSpinner from '@/components/LoadingSpinner';
 
@@ -33,30 +33,40 @@ export default function JoinCompetitionClient({ id }: JoinCompetitionClientProps
       }
 
       try {
-        // Verify the invite exists and is valid
-        const invite = await pb.collection('competition_invites').getFirstListItem(
-          `competition_id = "${id}" && email = "${email.toLowerCase()}" && status = "pending"`
-        ).catch(() => null);
+        const supabase = createBrowserClient();
 
-        if (!invite) {
+        // Verify the invite exists and is valid
+        const { data: invite, error: inviteError } = await supabase
+          .from('competition_invites')
+          .select('*')
+          .eq('competition_id', id)
+          .eq('email', email.toLowerCase())
+          .eq('status', 'pending')
+          .single();
+
+        if (inviteError || !invite) {
           setError('Invalid or expired invite');
           setLoading(false);
           return;
         }
 
         // Get the user's current weight to use as starting weight
-        const weightEntries = await pb.collection('weight_entries').getFullList({
-          filter: `user_id = "${user.id}"`,
-          sort: '-date',
-          limit: 1
-        });
+        const { data: weightEntries } = await supabase
+          .from('weight_entries')
+          .select('weight')
+          .eq('user_id', user.id)
+          .order('date', { ascending: false })
+          .limit(1);
 
         const startingWeight = weightEntries?.[0]?.weight;
 
         // Check if user already in competition
-        const existing = await pb.collection('competition_participants').getFirstListItem(
-          `competition_id = "${id}" && user_id = "${user.id}"`
-        ).catch(() => null);
+        const { data: existing } = await supabase
+          .from('competition_participants')
+          .select('*')
+          .eq('competition_id', id)
+          .eq('user_id', user.id)
+          .single();
 
         if (existing) {
           setError('You are already a member of this competition');
@@ -65,17 +75,26 @@ export default function JoinCompetitionClient({ id }: JoinCompetitionClientProps
         }
 
         // Join the competition
-        await pb.collection('competition_participants').create({
-          competition_id: id,
-          user_id: user.id,
-          starting_weight: startingWeight,
-          current_weight: startingWeight,
-          joined_at: new Date().toISOString(),
-          is_active: true
-        });
+        const { error: joinError } = await supabase
+          .from('competition_participants')
+          .insert([{
+            competition_id: id,
+            user_id: user.id,
+            starting_weight: startingWeight,
+            current_weight: startingWeight,
+            joined_at: new Date().toISOString(),
+            is_active: true
+          }]);
+
+        if (joinError) throw joinError;
 
         // Update invite status
-        await pb.collection('competition_invites').update(invite.id, { status: 'accepted' });
+        const { error: updateError } = await supabase
+          .from('competition_invites')
+          .update({ status: 'accepted' })
+          .eq('id', invite.id);
+
+        if (updateError) throw updateError;
 
         // Redirect to competitions page
         router.push('/competitions');

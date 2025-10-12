@@ -1,4 +1,4 @@
-import { pb } from '@/lib/pocketbase';
+import { createBrowserClient } from '@/lib/supabase';
 
 /**
  * Check if the current user has a specific permission
@@ -6,27 +6,32 @@ import { pb } from '@/lib/pocketbase';
  */
 export async function hasPermission(permission: string, resource?: string): Promise<boolean> {
   try {
-    const user = pb.authStore.model;
+    const supabase = createBrowserClient();
+    const { data: { user } } = await supabase.auth.getUser();
     if (!user) return false;
 
     // Check if user has admin role or super admin role
-    const userRoles = await pb.collection('user_roles').getFullList({
-      filter: `user_id = "${user.id}"`,
-      expand: 'role_id'
-    });
+    const { data: userRoles, error: userRolesError } = await supabase
+      .from('user_roles')
+      .select('*, role_id(*)')
+      .eq('user_id', user.id);
 
-    for (const userRole of userRoles) {
-      const role = userRole.expand?.role_id;
+    if (userRolesError) throw userRolesError;
+
+    for (const userRole of userRoles || []) {
+      const role = userRole.role_id;
       if (!role) continue;
 
       // Check if this role has the required permission
-      const rolePermissions = await pb.collection('role_permissions').getFullList({
-        filter: `role_id = "${role.id}"`,
-        expand: 'permission_id'
-      });
+      const { data: rolePermissions, error: rolePermsError } = await supabase
+        .from('role_permissions')
+        .select('*, permission_id(*)')
+        .eq('role_id', role.id);
 
-      for (const rolePerm of rolePermissions) {
-        const perm = rolePerm.expand?.permission_id;
+      if (rolePermsError) throw rolePermsError;
+
+      for (const rolePerm of rolePermissions || []) {
+        const perm = rolePerm.permission_id;
         if (perm && perm.name === permission) {
           return true;
         }
@@ -46,17 +51,20 @@ export async function hasPermission(permission: string, resource?: string): Prom
  */
 export async function isAdmin(): Promise<boolean> {
   try {
-    const user = pb.authStore.model;
+    const supabase = createBrowserClient();
+    const { data: { user } } = await supabase.auth.getUser();
     if (!user) return false;
 
     // Check if user has admin or super_admin role
-    const userRoles = await pb.collection('user_roles').getFullList({
-      filter: `user_id = "${user.id}"`,
-      expand: 'role_id'
-    });
+    const { data: userRoles, error } = await supabase
+      .from('user_roles')
+      .select('*, role_id(*)')
+      .eq('user_id', user.id);
 
-    for (const userRole of userRoles) {
-      const role = userRole.expand?.role_id;
+    if (error) throw error;
+
+    for (const userRole of userRoles || []) {
+      const role = userRole.role_id;
       if (role && (role.name === 'admin' || role.name === 'super_admin')) {
         return true;
       }
@@ -75,17 +83,20 @@ export async function isAdmin(): Promise<boolean> {
  */
 export async function isSuperAdmin(): Promise<boolean> {
   try {
-    const user = pb.authStore.model;
+    const supabase = createBrowserClient();
+    const { data: { user } } = await supabase.auth.getUser();
     if (!user) return false;
 
     // Check if user has super_admin role
-    const userRoles = await pb.collection('user_roles').getFullList({
-      filter: `user_id = "${user.id}"`,
-      expand: 'role_id'
-    });
+    const { data: userRoles, error } = await supabase
+      .from('user_roles')
+      .select('*, role_id(*)')
+      .eq('user_id', user.id);
 
-    for (const userRole of userRoles) {
-      const role = userRole.expand?.role_id;
+    if (error) throw error;
+
+    for (const userRole of userRoles || []) {
+      const role = userRole.role_id;
       if (role && role.name === 'super_admin') {
         return true;
       }
@@ -104,31 +115,45 @@ export async function isSuperAdmin(): Promise<boolean> {
  */
 export async function assignRole(userId: string, roleName: string): Promise<boolean> {
   try {
-    const currentUser = pb.authStore.model;
+    const supabase = createBrowserClient();
+    const { data: { user: currentUser } } = await supabase.auth.getUser();
     if (!currentUser) return false;
 
     // Get the role by name
-    const role = await pb.collection('roles').getFirstListItem(`name = "${roleName}"`);
-    if (!role) {
+    const { data: role, error: roleError } = await supabase
+      .from('roles')
+      .select('*')
+      .eq('name', roleName)
+      .single();
+
+    if (roleError || !role) {
       throw new Error(`Role "${roleName}" not found`);
     }
 
     // Check if user already has this role
-    const existingUserRole = await pb.collection('user_roles').getFullList({
-      filter: `user_id = "${userId}" && role_id = "${role.id}"`
-    });
+    const { data: existingUserRole, error: checkError } = await supabase
+      .from('user_roles')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('role_id', role.id);
 
-    if (existingUserRole.length > 0) {
+    if (checkError) throw checkError;
+
+    if (existingUserRole && existingUserRole.length > 0) {
       throw new Error('User already has this role');
     }
 
     // Assign the role
-    await pb.collection('user_roles').create({
-      user_id: userId,
-      role_id: role.id,
-      assigned_by: currentUser.id,
-      assigned_at: new Date().toISOString()
-    });
+    const { error: insertError } = await supabase
+      .from('user_roles')
+      .insert([{
+        user_id: userId,
+        role_id: role.id,
+        assigned_by: currentUser.id,
+        assigned_at: new Date().toISOString()
+      }]);
+
+    if (insertError) throw insertError;
 
     return true;
   } catch (error) {
@@ -143,20 +168,27 @@ export async function assignRole(userId: string, roleName: string): Promise<bool
  */
 export async function removeRole(userId: string, roleName: string): Promise<boolean> {
   try {
+    const supabase = createBrowserClient();
+
     // Get the role by name
-    const role = await pb.collection('roles').getFirstListItem(`name = "${roleName}"`);
-    if (!role) {
+    const { data: role, error: roleError } = await supabase
+      .from('roles')
+      .select('*')
+      .eq('name', roleName)
+      .single();
+
+    if (roleError || !role) {
       throw new Error(`Role "${roleName}" not found`);
     }
 
-    // Find and delete the user role
-    const userRoles = await pb.collection('user_roles').getFullList({
-      filter: `user_id = "${userId}" && role_id = "${role.id}"`
-    });
+    // Delete the user role
+    const { error: deleteError } = await supabase
+      .from('user_roles')
+      .delete()
+      .eq('user_id', userId)
+      .eq('role_id', role.id);
 
-    for (const userRole of userRoles) {
-      await pb.collection('user_roles').delete(userRole.id);
-    }
+    if (deleteError) throw deleteError;
 
     return true;
   } catch (error) {

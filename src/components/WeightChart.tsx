@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { pb } from '@/lib/pocketbase';
+import { createBrowserClient } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"
 import {
@@ -43,12 +43,16 @@ export default function WeightChart() {
     if (!user) return;
 
     try {
-      const records = await pb.collection('weight_entries').getFullList({
-        filter: `user_id = "${user.id}"`,
-        sort: 'date',
-      });
+      const supabase = createBrowserClient();
+      const { data: records, error } = await supabase
+        .from('weight_entries')
+        .select('date, weight')
+        .eq('user_id', user.id)
+        .order('date', { ascending: true });
 
-      const weightEntries = records.map(record => ({
+      if (error) throw error;
+
+      const weightEntries = (records || []).map(record => ({
         date: record.date,
         weight: record.weight
       }));
@@ -63,7 +67,7 @@ export default function WeightChart() {
   }, [user]);
 
   useEffect(() => {
-    let unsubscribe: (() => void) | null = null;
+    let channel: ReturnType<ReturnType<typeof createBrowserClient>['channel']> | null = null;
 
     const fetchData = async () => {
       if (!user) {
@@ -72,16 +76,24 @@ export default function WeightChart() {
       }
 
       try {
-        // Set up real-time subscription with PocketBase
-        pb.collection('weight_entries').subscribe('*', (e) => {
-          if (e.record.user_id === user.id) {
-            fetchWeightData(); // Refetch when data changes
-          }
-        }).then((unsub) => {
-          unsubscribe = unsub;
-        }).catch((error) => {
-          console.error('Error subscribing to weight entries:', error);
-        });
+        const supabase = createBrowserClient();
+        
+        // Set up real-time subscription with Supabase
+        channel = supabase
+          .channel('weight_entries_changes')
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'weight_entries',
+              filter: `user_id=eq.${user.id}`
+            },
+            () => {
+              fetchWeightData(); // Refetch when data changes
+            }
+          )
+          .subscribe();
 
         // Initial data fetch
         await fetchWeightData();
@@ -93,8 +105,8 @@ export default function WeightChart() {
     fetchData();
 
     return () => {
-      if (unsubscribe) {
-        unsubscribe();
+      if (channel) {
+        channel.unsubscribe();
       }
     };
   }, [user, fetchWeightData]);

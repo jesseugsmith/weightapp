@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createMiddlewareClient } from '@/lib/supabaseServer';
 
 // Routes that require authentication
 const PROTECTED_ROUTES = [
@@ -24,12 +25,8 @@ const PUBLIC_ROUTES = [
   '/api'
 ];
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const url = request.nextUrl.clone();
-  
-  // Check if user has auth token (PocketBase stores it in localStorage, 
-  // but for SSR we'd need to check cookies or implement server-side session)
-  // For now, we'll do basic path-based routing
   
   // Allow API routes, static files, and favicon
   if (
@@ -41,9 +38,37 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // For protected routes, we'll let the client-side auth handle redirects
-  // since PocketBase auth is primarily client-side
-  return NextResponse.next();
+  // Create Supabase client for middleware
+  const { supabase, response } = createMiddlewareClient(request);
+  
+  // SECURITY: Use getUser() instead of getSession() to verify with server
+  // This ensures the user data is authentic and not tampered with
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
+
+  const isAuthenticated = !!user && !error;
+  const isProtectedRoute = PROTECTED_ROUTES.some((route) =>
+    url.pathname.startsWith(route)
+  );
+  const isAuthRoute = AUTH_ROUTES.some((route) =>
+    url.pathname.startsWith(route)
+  );
+
+  // Redirect unauthenticated users from protected routes to signin
+  if (isProtectedRoute && !isAuthenticated) {
+    const redirectUrl = new URL('/signin', request.url);
+    redirectUrl.searchParams.set('redirectTo', url.pathname);
+    return NextResponse.redirect(redirectUrl);
+  }
+
+  // Redirect authenticated users from auth routes to home
+  if (isAuthRoute && isAuthenticated) {
+    return NextResponse.redirect(new URL('/home', request.url));
+  }
+
+  return response;
 }
 
 export const config = {

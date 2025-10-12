@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedPB } from '@/lib/serverAuth';
+import { getAuthenticatedSupabase } from '@/lib/serverAuth';
 import { randomBytes } from 'crypto';
 
 /**
@@ -8,27 +8,30 @@ import { randomBytes } from 'crypto';
  */
 export async function GET(req: NextRequest) {
   try {
-    const auth = await getAuthenticatedPB(req);
+    const auth = await getAuthenticatedSupabase(req);
     if (!auth) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { pb, user } = auth;
+    const { supabase, user } = auth;
 
     // Get all tokens for the user
-    const tokens = await pb.collection('api_tokens').getFullList({
-      filter: `user_id = "${user.id}"`,
-      sort: '-created',
-    });
+    const { data: tokens, error } = await supabase
+      .from('api_tokens')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
 
     // Don't return the actual token values for security
-    const sanitizedTokens = tokens.map((token: any) => ({
+    const sanitizedTokens = (tokens || []).map((token: any) => ({
       id: token.id,
       name: token.name,
       last_used_at: token.last_used_at,
-      is_active: token.is_active,
+      is_active: token.is_active ?? true, // Default to true if column doesn't exist
       expires_at: token.expires_at,
-      created: token.created,
+      created: token.created_at,
       // Only show first/last 4 chars of token
       token_preview: token.token ? `${token.token.substring(0, 4)}...${token.token.substring(token.token.length - 4)}` : '',
     }));
@@ -49,12 +52,12 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
-    const auth = await getAuthenticatedPB(req);
+    const auth = await getAuthenticatedSupabase(req);
     if (!auth) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { pb, user } = auth;
+    const { supabase, user } = auth;
     const body = await req.json();
     const { name, expires_in_days } = body;
 
@@ -77,13 +80,18 @@ export async function POST(req: NextRequest) {
     }
 
     // Create the token record
-    const newToken = await pb.collection('api_tokens').create({
-      user_id: user.id,
-      name: name.trim(),
-      token,
-      is_active: true,
-      expires_at,
-    });
+    const { data: newToken, error } = await supabase
+      .from('api_tokens')
+      .insert([{
+        user_id: user.id,
+        name: name.trim(),
+        token,
+        expires_at,
+      }])
+      .select()
+      .single();
+
+    if (error) throw error;
 
     // Return the full token ONLY on creation (user needs to save it)
     return NextResponse.json({
@@ -91,9 +99,9 @@ export async function POST(req: NextRequest) {
         id: newToken.id,
         name: newToken.name,
         token: newToken.token, // Full token - only shown once!
-        is_active: newToken.is_active,
+        is_active: newToken.is_active ?? true,
         expires_at: newToken.expires_at,
-        created: newToken.created,
+        created: newToken.created_at,
       },
       message: 'Token created successfully. Save it now - you won\'t be able to see it again!',
     }, { status: 201 });
@@ -112,12 +120,12 @@ export async function POST(req: NextRequest) {
  */
 export async function DELETE(req: NextRequest) {
   try {
-    const auth = await getAuthenticatedPB(req);
+    const auth = await getAuthenticatedSupabase(req);
     if (!auth) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { pb, user } = auth;
+    const { supabase, user } = auth;
     const tokenId = req.nextUrl.searchParams.get('id');
 
     if (!tokenId) {
@@ -128,7 +136,14 @@ export async function DELETE(req: NextRequest) {
     }
 
     // Verify the token belongs to the user
-    const token = await pb.collection('api_tokens').getOne(tokenId);
+    const { data: token, error: fetchError } = await supabase
+      .from('api_tokens')
+      .select('*')
+      .eq('id', tokenId)
+      .single();
+
+    if (fetchError) throw fetchError;
+
     if (token.user_id !== user.id) {
       return NextResponse.json(
         { error: 'Unauthorized to delete this token' },
@@ -137,7 +152,12 @@ export async function DELETE(req: NextRequest) {
     }
 
     // Delete the token
-    await pb.collection('api_tokens').delete(tokenId);
+    const { error: deleteError } = await supabase
+      .from('api_tokens')
+      .delete()
+      .eq('id', tokenId);
+
+    if (deleteError) throw deleteError;
 
     return NextResponse.json({ message: 'Token deleted successfully' });
   } catch (error: any) {
@@ -155,12 +175,12 @@ export async function DELETE(req: NextRequest) {
  */
 export async function PATCH(req: NextRequest) {
   try {
-    const auth = await getAuthenticatedPB(req);
+    const auth = await getAuthenticatedSupabase(req);
     if (!auth) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { pb, user } = auth;
+    const { supabase, user } = auth;
     const tokenId = req.nextUrl.searchParams.get('id');
     const body = await req.json();
 
@@ -172,7 +192,14 @@ export async function PATCH(req: NextRequest) {
     }
 
     // Verify the token belongs to the user
-    const token = await pb.collection('api_tokens').getOne(tokenId);
+    const { data: token, error: fetchError } = await supabase
+      .from('api_tokens')
+      .select('*')
+      .eq('id', tokenId)
+      .single();
+
+    if (fetchError) throw fetchError;
+
     if (token.user_id !== user.id) {
       return NextResponse.json(
         { error: 'Unauthorized to update this token' },
@@ -181,15 +208,35 @@ export async function PATCH(req: NextRequest) {
     }
 
     // Update the token
-    const updatedToken = await pb.collection('api_tokens').update(tokenId, {
-      is_active: body.is_active,
-    });
+    // Try to update is_active, but handle case where column might not exist
+    const updateData: any = {};
+    if (body.is_active !== undefined) {
+      updateData.is_active = body.is_active;
+    }
+    
+    const { data: updatedToken, error: updateError } = await supabase
+      .from('api_tokens')
+      .update(updateData)
+      .eq('id', tokenId)
+      .select()
+      .single();
+
+    if (updateError) {
+      // If the error is about the column not existing, return a more helpful message
+      if (updateError.message?.includes('is_active')) {
+        return NextResponse.json({
+          error: 'The is_active column does not exist in the api_tokens table. Please add it to your Supabase schema.',
+          hint: 'Run: ALTER TABLE api_tokens ADD COLUMN is_active BOOLEAN DEFAULT true;'
+        }, { status: 400 });
+      }
+      throw updateError;
+    }
 
     return NextResponse.json({
       message: 'Token updated successfully',
       token: {
         id: updatedToken.id,
-        is_active: updatedToken.is_active,
+        is_active: updatedToken.is_active ?? true,
       },
     });
   } catch (error: any) {

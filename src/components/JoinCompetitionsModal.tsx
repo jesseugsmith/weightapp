@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { pb } from '@/lib/pocketbase';
-import { Competition } from '@/types/database.types';
+import { createBrowserClient } from '@/lib/supabase';
+import { Competition } from '@/types/supabase.types';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import {
   Sheet,
@@ -40,25 +40,34 @@ export default function JoinCompetitionsModal({
 
   const fetchCompetitions = async () => {
     try {
+      const supabase = createBrowserClient();
+      
       // Get competitions that are still in draft status and haven't ended
-      const competitions = await pb.collection('competitions').getFullList({
-        filter: `end_date >= "${new Date().toISOString()}" && status = "draft"`,
-        sort: 'start_date',
-      });
+      const { data: competitions, error: compError } = await supabase
+        .from('competitions')
+        .select('*')
+        .gte('end_date', new Date().toISOString())
+        .eq('status', 'draft')
+        .order('start_date', { ascending: true });
+
+      if (compError) throw compError;
 
       // Get current user's participations to filter out competitions they've already joined
-      const participations = await pb.collection('competition_participants').getFullList({
-        filter: `user_id = "${userId}"`,
-      });
+      const { data: participations, error: partError } = await supabase
+        .from('competition_participants')
+        .select('competition_id')
+        .eq('user_id', userId);
 
-      const participatedCompetitionIds = participations.map(p => p.competition_id);
+      if (partError) throw partError;
+
+      const participatedCompetitionIds = participations?.map((p: any) => p.competition_id) || [];
       
       // Filter out competitions where the user is already a participant
-      const filteredCompetitions = competitions.filter(comp => 
+      const filteredCompetitions = (competitions || []).filter((comp: any) => 
         !participatedCompetitionIds.includes(comp.id)
       );
 
-      setCompetitions(filteredCompetitions as Competition[]);
+      setCompetitions(filteredCompetitions);
     } catch (error) {
       console.error('Error fetching competitions:', error);
     } finally {

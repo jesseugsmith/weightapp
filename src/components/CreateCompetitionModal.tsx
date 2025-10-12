@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { pb } from '@/lib/pocketbase';
+import { createBrowserClient } from '@/lib/supabase';
 import {
   Sheet,
   SheetContent,
@@ -82,13 +82,22 @@ export default function CreateCompetitionModal({
         start_date: newCompetition.startDate,
         end_date: newCompetition.endDate,
         created_by: userId,
-        status: 'draft',
-        is_public: true,
-        competition_type: 'weight_loss',
+        status: 'draft' as const,
+        competition_type: 'weight_loss' as const,
         entry_fee: newCompetition.entryFee ? parseFloat(newCompetition.entryFee) : 0
       };
 
-      const competition = await pb.collection('competitions').create(competitionData);
+      const supabase = createBrowserClient();
+      
+      // Create competition
+      const { data: competition, error: compError } = await supabase
+        .from('competitions')
+        .insert([competitionData])
+        .select()
+        .single();
+
+      if (compError) throw compError;
+      if (!competition) throw new Error('Failed to create competition');
 
       // Create prizes with percentages
       const prizes = [];
@@ -117,17 +126,25 @@ export default function CreateCompetitionModal({
         });
       }
 
-      // Create all prizes
-      for (const prize of prizes) {
-        await pb.collection('prizes').create(prize);
+      // Create all prizes in batch
+      if (prizes.length > 0) {
+        const { error: prizesError } = await supabase
+          .from('prizes')
+          .insert(prizes);
+
+        if (prizesError) throw prizesError;
       }
 
       // Automatically join the competition you create
-      await pb.collection('competition_participants').create({
-        competition_id: competition.id,
-        user_id: userId,
-        joined_at: new Date().toISOString()
-      });
+      const { error: participantError } = await supabase
+        .from('competition_participants')
+        .insert([{
+          competition_id: competition.id,
+          user_id: userId,
+          joined_at: new Date().toISOString()
+        }]);
+
+      if (participantError) throw participantError;
 
       setNewCompetition({
         name: '',

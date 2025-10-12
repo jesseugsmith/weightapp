@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { pb } from '@/lib/pocketbase';
+import { createBrowserClient } from '@/lib/supabase';
 import {
   Sheet,
   SheetContent,
@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Competition, Prize } from '@/types/database.types';
+import { Competition, Prize } from '@/types/supabase.types';
 
 interface EditCompetitionModalProps {
   isOpen: boolean;
@@ -68,14 +68,20 @@ export default function EditCompetitionModal({
 
   const fetchPrizes = async (currentFormData: typeof formData) => {
     try {
-      const prizesData = await pb.collection('prizes').getFullList({
-        filter: `competition_id = "${competition.id}"`,
-        sort: 'rank',
-      });
-      setPrizes(prizesData as Prize[]);
+      const supabase = createBrowserClient();
+      
+      const { data: prizesData, error } = await supabase
+        .from('prizes')
+        .select('*')
+        .eq('competition_id', competition.id)
+        .order('rank', { ascending: true });
+
+      if (error) throw error;
+
+      setPrizes(prizesData || []);
 
       // Update form data with existing prize percentages, or use defaults if none exist
-      if (prizesData.length > 0) {
+      if (prizesData && prizesData.length > 0) {
         const updatedFormData = { ...currentFormData };
         prizesData.forEach((prize: any) => {
           if (prize.rank === 1) {
@@ -165,15 +171,27 @@ export default function EditCompetitionModal({
 
       // Only update if there are changes
       if (Object.keys(competitionData).length > 0) {
-        await pb.collection('competitions').update(competition.id, competitionData);
+        const supabase = createBrowserClient();
+        const { error: updateError } = await supabase
+          .from('competitions')
+          .update(competitionData)
+          .eq('id', competition.id);
+
+        if (updateError) throw updateError;
       }
 
       // Update prizes
+      const supabase = createBrowserClient();
+      
       // If prizes exist, delete them first
       if (prizes.length > 0) {
-        for (const prize of prizes) {
-          await pb.collection('prizes').delete(prize.id);
-        }
+        const prizeIds = prizes.map(p => p.id);
+        const { error: deleteError } = await supabase
+          .from('prizes')
+          .delete()
+          .in('id', prizeIds);
+
+        if (deleteError) throw deleteError;
       }
 
       // Create new prizes with updated (or default) percentages
@@ -203,23 +221,20 @@ export default function EditCompetitionModal({
         });
       }
 
-      // Create all new prizes
-      for (const prize of newPrizes) {
-        await pb.collection('prizes').create(prize);
+      // Create all new prizes in one batch
+      if (newPrizes.length > 0) {
+        const { error: insertError } = await supabase
+          .from('prizes')
+          .insert(newPrizes);
+
+        if (insertError) throw insertError;
       }
 
       onCompetitionUpdated();
       onClose();
     } catch (error) {
       console.error('Error updating competition:', error);
-      // Enhanced error logging
-      if (error && typeof error === 'object' && 'response' in error) {
-        const pbError = error as any;
-        console.error('PocketBase error response:', pbError.response);
-        setError(pbError.response?.message || pbError.message || 'An unexpected error occurred');
-      } else {
-        setError(error instanceof Error ? error.message : 'An unexpected error occurred');
-      }
+      setError(error instanceof Error ? error.message : 'An unexpected error occurred');
     } finally {
       setLoading(false);
     }

@@ -2,30 +2,29 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { useNotifications } from '@/contexts/NotificationContext';
-import { pb } from '@/lib/pocketbase';
+import { createBrowserClient } from '@/lib/supabase';
+import type { Profile, CompetitionParticipant, Competition } from '@/types/supabase.types';
 
-import { Competition, CompetitionParticipant, CompetitionParticipantExpanded, WeightEntry } from '@/types/database.types';
-import { weightService, competitionService, userService } from '@/utils/dataService';
-import { standingsService } from '@/utils/standingsService';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import LogWeightModal from '@/components/LogWeightModal';
 import WeightChart from '@/components/WeightChart';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
-interface CompetitionWithRank extends CompetitionParticipantExpanded {
+interface CompetitionParticipantWithDetails extends CompetitionParticipant {
+  competition?: Competition;
   userRank?: number;
   totalParticipants?: number;
 }
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const [activeCompetitions, setActiveCompetitions] = useState<CompetitionWithRank[]>([]);
+  const supabase = createBrowserClient();
+  const [activeCompetitions, setActiveCompetitions] = useState<CompetitionParticipantWithDetails[]>([]);
   const [latestWeight, setLatestWeight] = useState<number | null>(null);
   const [startingWeight, setStartingWeight] = useState<number | null>(null);
   const [totalWeightLoss, setTotalWeightLoss] = useState<number | null>(null);
-  const [profile, setProfile] = useState<{ first_name?: string, nickname?: string } | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -35,53 +34,54 @@ export default function Dashboard() {
     }
   }, [user]);
 
-  const { addNotification } = useNotifications();
-
   const fetchData = async () => {
     try {
       if (!user) return;
 
       // Fetch user profile
       try {
-        console.log(user);
-        const profileData = await pb.collection('profiles').getFirstListItem(
-          `user_id = "${user.id}"`
-        );
-        setProfile({
-          first_name: profileData.first_name,
-          nickname: profileData.nickname
-        });
+        const { data: profileData, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        if (!error && profileData) {
+          setProfile(profileData);
+        }
       } catch (error) {
         console.error('Error fetching profile:', error);
       }
 
       // Fetch both latest and first weight entries
       try {
-        const [latestEntries, firstEntries] = await Promise.all([
-          pb.collection('weight_entries').getFullList({
-            filter: `user_id = "${user.id}"`,
-            sort: '-date',
-            limit: 1
-          }),
-          pb.collection('weight_entries').getFullList({
-            filter: `user_id = "${user.id}"`,
-            sort: 'date',
-            limit: 1
-          })
+        const [latestResult, firstResult] = await Promise.all([
+          supabase
+            .from('weight_entries')
+            .select('weight')
+            .eq('user_id', user.id)
+            .order('date', { ascending: false })
+            .limit(1),
+          supabase
+            .from('weight_entries')
+            .select('weight')
+            .eq('user_id', user.id)
+            .order('date', { ascending: true })
+            .limit(1)
         ]);
 
-        if (latestEntries.length > 0) {
-          const currentWeight = latestEntries[0].weight;
+        if (latestResult.data && latestResult.data.length > 0) {
+          const currentWeight = latestResult.data[0].weight;
           setLatestWeight(currentWeight);
           
-          if (firstEntries.length > 0) {
-            const startWeight = firstEntries[0].weight;
+          if (firstResult.data && firstResult.data.length > 0) {
+            const startWeight = firstResult.data[0].weight;
             setStartingWeight(startWeight);
             const weightLoss = startWeight - currentWeight;
             setTotalWeightLoss(weightLoss);
           }
-        } else if (firstEntries.length > 0) {
-          setStartingWeight(firstEntries[0].weight);
+        } else if (firstResult.data && firstResult.data.length > 0) {
+          setStartingWeight(firstResult.data[0].weight);
         }
       } catch (error) {
         console.error('Error fetching weight data:', error);
@@ -89,29 +89,43 @@ export default function Dashboard() {
 
       // Fetch active competitions
       try {
-        const competitions = await pb.collection('competition_participants').getFullList({
-          filter: `user_id = "${user.id}"`,
-          expand: 'competition_id'
-        }) as CompetitionParticipantExpanded[];
+        const { data: competitions, error } = await supabase
+          .from('competition_participants')
+          .select(`
+            *,
+            competition:competitions!competition_id(*)
+          `)
+          .eq('user_id', user.id)
+          .eq('is_active', true);
+
+        if (error) throw error;
 
         // Fetch rank and total participants for each competition
         const competitionsWithRank = await Promise.all(
-          competitions.map(async (comp) => {
-            const competitionId = comp.expand?.competition_id?.id;
+          (competitions || []).map(async (comp) => {
+            const competitionId = comp.competition?.id;
             if (!competitionId) return { ...comp, userRank: undefined, totalParticipants: 0 };
 
             try {
-              const [rank, participants] = await Promise.all([
-                standingsService.getUserRank(competitionId, user.id),
-                pb.collection('competition_participants').getFullList({
-                  filter: `competition_id = "${competitionId}" && is_active = true`
-                })
-              ]);
+              // Get all participants sorted by weight_change_percentage
+              const { data: allParticipants, error: participantsError } = await supabase
+                .from('competition_participants')
+                .select('user_id, weight_change_percentage')
+                .eq('competition_id', competitionId)
+                .eq('is_active', true)
+                .not('weight_change_percentage', 'is', null)
+                .order('weight_change_percentage', { ascending: false });
+
+              if (participantsError) throw participantsError;
+
+              const totalParticipants = allParticipants?.length || 0;
+              const userRankIndex = allParticipants?.findIndex(p => p.user_id === user.id);
+              const userRank = userRankIndex !== undefined && userRankIndex >= 0 ? userRankIndex + 1 : undefined;
 
               return {
                 ...comp,
-                userRank: rank,
-                totalParticipants: participants.length
+                userRank,
+                totalParticipants
               };
             } catch (error) {
               console.error('Error fetching rank for competition:', competitionId, error);
@@ -122,9 +136,10 @@ export default function Dashboard() {
 
         // Sort by end date (soonest first) and limit to 5
         const sortedCompetitions = competitionsWithRank
+          .filter(comp => comp.competition)
           .sort((a, b) => {
-            const dateA = new Date(a.expand?.competition_id?.end_date || '').getTime();
-            const dateB = new Date(b.expand?.competition_id?.end_date || '').getTime();
+            const dateA = new Date(a.competition?.end_date || '').getTime();
+            const dateB = new Date(b.competition?.end_date || '').getTime();
             return dateA - dateB;
           })
           .slice(0, 5);
@@ -212,14 +227,14 @@ export default function Dashboard() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {activeCompetitions.map((comp) => {
-              const daysLeft = calculateDaysLeft(comp.expand?.competition_id?.end_date || '');
+              const daysLeft = calculateDaysLeft(comp.competition?.end_date || '');
               const formattedDays = formatDaysLeft(daysLeft);
               
               return (
                 <Card key={comp.id} className="hover:shadow-lg transition-shadow duration-200">
                   <CardHeader>
                     <div className="flex justify-between items-start mb-2">
-                      <CardTitle className="text-lg">{comp.expand?.competition_id?.name}</CardTitle>
+                      <CardTitle className="text-lg">{comp.competition?.name}</CardTitle>
                       {comp.userRank && (
                         <div className="flex flex-col items-center bg-gradient-to-br from-orange-500 to-red-600 text-white rounded-lg px-3 py-2 min-w-[60px]">
                           <span className="text-xs font-medium uppercase tracking-wide">Place</span>
@@ -228,7 +243,7 @@ export default function Dashboard() {
                         </div>
                       )}
                     </div>
-                    <CardDescription>{comp.expand?.competition_id?.description}</CardDescription>
+                    <CardDescription>{comp.competition?.description}</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-3">

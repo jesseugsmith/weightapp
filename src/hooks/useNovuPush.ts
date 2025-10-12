@@ -131,23 +131,32 @@ async function registerSubscriberWithNovu(user: any) {
     let firstName = '';
     let lastName = '';
     try {
-      const pb = (await import('@/lib/pocketbase')).pb;
-      const profile = await pb.collection('profiles').getFirstListItem(
-        `user_id = "${user.id}"`
-      );
-      firstName = profile.first_name || '';
-      lastName = profile.last_name || '';
-      console.log('✅ Profile data fetched for Novu:', { 
-        userId: user.id,
-        firstName, 
-        lastName, 
-        email: user.email 
-      });
+      const { createBrowserClient } = await import('@/lib/supabase');
+      const supabase = createBrowserClient();
+      
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('first_name, last_name')
+        .eq('id', user.id)
+        .single();
+      
+      if (!error && profile) {
+        firstName = profile.first_name || '';
+        lastName = profile.last_name || '';
+        console.log('✅ Profile data fetched for Novu:', { 
+          userId: user.id,
+          firstName, 
+          lastName, 
+          email: user.email 
+        });
+      } else {
+        throw error;
+      }
     } catch (profileError) {
       console.error('❌ Error fetching profile for Novu registration:', profileError);
-      // Fall back to user object if available
-      firstName = user.first_name || '';
-      lastName = user.last_name || '';
+      // Fall back to user metadata if available
+      firstName = user.user_metadata?.first_name || '';
+      lastName = user.user_metadata?.last_name || '';
       console.log('⚠️ Using fallback user data:', { firstName, lastName });
     }
 
