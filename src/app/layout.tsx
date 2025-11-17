@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "FitClash - Where Fitness Meets Competition",
+  title: "challngr - Where Fitness Meets Competition",
   description: "Join weight loss competitions, track your progress, and compete with friends in the ultimate fitness challenge app.",
 };
 

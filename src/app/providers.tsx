@@ -1,17 +1,16 @@
 'use client';
 
 import { AuthProvider } from "@/hooks/useAuth";
-import { NotificationProvider } from "@/contexts/NotificationContext";
-import { PermissionProvider } from "@/contexts/PermissionContext";
+import { PermissionsProvider } from "@/contexts/PermissionsContext";
+import { Toaster } from "@/components/ui/sonner";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <AuthProvider>
-      <PermissionProvider>
-        <NotificationProvider>
-          {children}
-        </NotificationProvider>
-      </PermissionProvider>
+      <PermissionsProvider>
+        {children}
+        <Toaster />
+      </PermissionsProvider>
     </AuthProvider>
   );
 }

@@ -1,4 +1,4 @@
-import { pb } from '@/lib/pocketbase';
+import { createBrowserClient } from '@/lib/supabase';
 
 import type { WeightEntry, Competition } from '@/types/database.types';
 import { start } from 'repl';
@@ -7,7 +7,14 @@ import { start } from 'repl';
 export const weightService = {
   async logWeight(data: Omit<WeightEntry, 'id' | 'created' | 'updated'>) {
     try {
-      const result = await pb.collection('weight_entries').create(data);
+      const supabase = createBrowserClient();
+      const { data: result, error } = await supabase
+        .from('weight_entries')
+        .insert([data])
+        .select()
+        .single();
+      
+      if (error) throw error;
       return result;
     } catch (error) {
       console.error('Error logging weight:', error);
@@ -16,11 +23,24 @@ export const weightService = {
   },
   async getWeightHistory(userId: string, limit: number = 50) {
     try {
-      const result = await pb.collection('weight_entries').getList(1, limit, {
-        filter: `user_id = "${userId}"`,
-        sort: '-date',
-      });
-      return result;
+      const supabase = createBrowserClient();
+      const { data: items, error, count } = await supabase
+        .from('weight_entries')
+        .select('*', { count: 'exact' })
+        .eq('user_id', userId)
+        .order('date', { ascending: false })
+        .limit(limit);
+
+      if (error) throw error;
+
+      // Return paginated structure
+      return {
+        page: 1,
+        perPage: limit,
+        totalItems: count || 0,
+        totalPages: Math.ceil((count || 0) / limit),
+        items: items || []
+      };
     } catch (error) {
       console.error('Error getting weight history:', error);
       throw error;
@@ -29,7 +49,15 @@ export const weightService = {
 
   async updateWeight(id: string, data: Partial<WeightEntry>) {
     try {
-      const result = await pb.collection('weight_entries').update(id, data);
+      const supabase = createBrowserClient();
+      const { data: result, error } = await supabase
+        .from('weight_entries')
+        .update(data)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
       return result;
     } catch (error) {
       console.error('Error updating weight:', error);
@@ -39,7 +67,13 @@ export const weightService = {
 
   async deleteWeight(id: string) {
     try {
-      await pb.collection('weight_entries').delete(id);
+      const supabase = createBrowserClient();
+      const { error } = await supabase
+        .from('weight_entries')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
     } catch (error) {
       console.error('Error deleting weight:', error);
       throw error;
@@ -51,7 +85,14 @@ export const weightService = {
 export const competitionService = {
   async createCompetition(data: Omit<Competition, 'id' | 'created' | 'updated'>) {
     try {
-      const result = await pb.collection('competitions').create(data);
+      const supabase = createBrowserClient();
+      const { data: result, error } = await supabase
+        .from('competitions')
+        .insert([data])
+        .select()
+        .single();
+
+      if (error) throw error;
       return result;
     } catch (error) {
       console.error('Error creating competition:', error);
@@ -61,8 +102,22 @@ export const competitionService = {
 
   async startCompetition(competitionId: string) {
     try {
-      const result = await pb.send(`/api/competitions/start/${competitionId}`, { method: 'POST' });
-      return result;
+      // Call the custom API endpoint
+      const supabase = createBrowserClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      const response = await fetch(`/api/competitions/start/${competitionId}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session?.access_token}`,
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to start competition');
+      }
+      
+      return await response.json();
     } catch (error) {
       console.error('Error starting competition:', error);
       throw error;
@@ -70,12 +125,47 @@ export const competitionService = {
   },
   async getCompetitions(filter?: string, limit: number = 20) {
     try {
-      const result = await pb.collection('competitions').getList(1, limit, {
-        filter: filter || '',
-        sort: '-created',
-        expand: 'creator_id'
-      });
-      return result;
+      const supabase = createBrowserClient();
+      let query = supabase
+        .from('competitions')
+        .select('*, creator_id(*)', { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      // Note: You may need to adjust filter logic based on your specific needs
+      
+      const { data: items, error, count } = await query;
+
+      if (error) throw error;
+
+      // Add days_left to each competition
+      const itemsWithDaysLeft = await Promise.all(
+        (items || []).map(async (item) => {
+          try {
+            const { data: daysLeftData } = await supabase
+              .rpc('days_left', {
+                start_ts: item.start_date,
+                end_ts: item.end_date,
+                include_today: true
+              });
+            return {
+              ...item,
+              days_left: daysLeftData ?? undefined
+            };
+          } catch (err) {
+            console.warn('Failed to calculate days_left:', err);
+            return item;
+          }
+        })
+      );
+
+      return {
+        page: 1,
+        perPage: limit,
+        totalItems: count || 0,
+        totalPages: Math.ceil((count || 0) / limit),
+        items: itemsWithDaysLeft
+      };
     } catch (error) {
       console.error('Error getting competitions:', error);
       throw error;
@@ -84,10 +174,31 @@ export const competitionService = {
 
   async getCompetition(id: string) {
     try {
-      const result = await pb.collection('competitions').getOne(id, {
-        expand: 'creator_id'
-      });
-      return result;
+      const supabase = createBrowserClient();
+      const { data: result, error } = await supabase
+        .from('competitions')
+        .select('*, creator_id(*)')
+        .eq('id', id)
+        .single();
+
+      if (error) throw error;
+
+      // Add days_left
+      try {
+        const { data: daysLeftData } = await supabase
+          .rpc('days_left', {
+            start_ts: result.start_date,
+            end_ts: result.end_date,
+            include_today: true
+          });
+        return {
+          ...result,
+          days_left: daysLeftData ?? undefined
+        };
+      } catch (err) {
+        console.warn('Failed to calculate days_left:', err);
+        return result;
+      }
     } catch (error) {
       console.error('Error getting competition:', error);
       throw error;
@@ -96,12 +207,19 @@ export const competitionService = {
 
   async joinCompetition(competitionId: string, userId: string) {
     try {
+      const supabase = createBrowserClient();
       const data = {
         competition_id: competitionId,
         user_id: userId,
         joined_date: new Date().toISOString()
       };
-      const result = await pb.collection('competition_participants').create(data);
+      const { data: result, error } = await supabase
+        .from('competition_participants')
+        .insert([data])
+        .select()
+        .single();
+
+      if (error) throw error;
       return result;
     } catch (error) {
       console.error('Error joining competition:', error);
@@ -111,12 +229,24 @@ export const competitionService = {
 
   async getCompetitionParticipants(competitionId: string) {
     try {
-      const result = await pb.collection('competition_participants').getList(1, 100, {
-        filter: `competition_id = "${competitionId}"`,
-        expand: 'user_id',
-        sort: 'rank,weight_lost'
-      });
-      return result;
+      const supabase = createBrowserClient();
+      const { data: items, error, count } = await supabase
+        .from('competition_participants')
+        .select('*, user_id(*)', { count: 'exact' })
+        .eq('competition_id', competitionId)
+        .order('rank', { ascending: true })
+        .order('weight_lost', { ascending: false })
+        .limit(100);
+
+      if (error) throw error;
+
+      return {
+        page: 1,
+        perPage: 100,
+        totalItems: count || 0,
+        totalPages: 1,
+        items: items || []
+      };
     } catch (error) {
       console.error('Error getting competition participants:', error);
       throw error;
@@ -125,12 +255,23 @@ export const competitionService = {
 
   async getUserCompetitions(userId: string) {
     try {
-      const result = await pb.collection('competition_participants').getList(1, 50, {
-        filter: `user_id = "${userId}"`,
-        expand: 'competition_id',
-        sort: '-joined_date'
-      });
-      return result;
+      const supabase = createBrowserClient();
+      const { data: items, error, count } = await supabase
+        .from('competition_participants')
+        .select('*, competition_id(*)', { count: 'exact' })
+        .eq('user_id', userId)
+        .order('joined_date', { ascending: false })
+        .limit(50);
+
+      if (error) throw error;
+
+      return {
+        page: 1,
+        perPage: 50,
+        totalItems: count || 0,
+        totalPages: 1,
+        items: items || []
+      };
     } catch (error) {
       console.error('Error getting user competitions:', error);
       throw error;
@@ -139,10 +280,18 @@ export const competitionService = {
 
   async updateParticipantWeight(participantId: string, weight: number) {
     try {
-      const result = await pb.collection('competition_participants').update(participantId, {
-        current_weight: weight,
-        weight_lost: 0 // This should be calculated based on starting_weight
-      });
+      const supabase = createBrowserClient();
+      const { data: result, error } = await supabase
+        .from('competition_participants')
+        .update({
+          current_weight: weight,
+          weight_lost: 0 // This should be calculated based on starting_weight
+        })
+        .eq('id', participantId)
+        .select()
+        .single();
+
+      if (error) throw error;
       return result;
     } catch (error) {
       console.error('Error updating participant weight:', error);
@@ -155,7 +304,15 @@ export const competitionService = {
 export const userService = {
   async updateProfile(userId: string, data: any) {
     try {
-      const result = await pb.collection('users').update(userId, data);
+      const supabase = createBrowserClient();
+      const { data: result, error } = await supabase
+        .from('profiles')
+        .update(data)
+        .eq('id', userId)
+        .select()
+        .single();
+
+      if (error) throw error;
       return result;
     } catch (error) {
       console.error('Error updating profile:', error);
@@ -165,7 +322,14 @@ export const userService = {
 
   async getProfile(userId: string) {
     try {
-      const result = await pb.collection('users').getOne(userId);
+      const supabase = createBrowserClient();
+      const { data: result, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (error) throw error;
       return result;
     } catch (error) {
       console.error('Error getting profile:', error);

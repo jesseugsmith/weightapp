@@ -1,6 +1,5 @@
 'use client';
 
-import NotificationInbox from './NotificationInbox';
 import { useAuth } from '@/hooks/useAuth';
 
 interface TopHeaderProps {
@@ -40,12 +39,12 @@ export default function TopHeader({ onMenuClick, onCollapseToggle, isCollapsed }
 
       {/* Center - Page title (mobile only) */}
       <div className="flex-1 lg:flex-none lg:hidden">
-        <h1 className="text-lg font-semibold text-white text-center">FitClash</h1>
+        <h1 className="text-lg font-semibold text-white text-center">challngr</h1>
       </div>
 
       {/* Right side - Notifications */}
       <div className="flex items-center">
-        <NotificationInbox subscriberId={user?.id || 'guest-user'} />
+        {/* NotificationInbox removed - handled by main layout */}
       </div>
     </header>
   );

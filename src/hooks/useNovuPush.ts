@@ -19,7 +19,10 @@ export function useNovuPush() {
     
     // Prevent duplicate registrations in the same session
     if (registeredUsers.has(user.id) || hasAttemptedRegistration.current) {
-      console.log('Push notifications already registered for user:', user.id);
+      // Reduce console noise - only log once per session
+      if (!registeredUsers.has(user.id)) {
+        console.log('Push notifications already registered for user:', user.id);
+      }
       return;
     }
     
@@ -131,35 +134,46 @@ async function registerSubscriberWithNovu(user: any) {
     let firstName = '';
     let lastName = '';
     try {
-      const pb = (await import('@/lib/pocketbase')).pb;
-      const profile = await pb.collection('profiles').getFirstListItem(
-        `user_id = "${user.id}"`
-      );
-      firstName = profile.first_name || '';
-      lastName = profile.last_name || '';
-      console.log('✅ Profile data fetched for Novu:', { 
-        userId: user.id,
-        firstName, 
-        lastName, 
-        email: user.email 
-      });
+      const { createBrowserClient } = await import('@/lib/supabase');
+      const supabase = createBrowserClient();
+      
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('first_name, last_name')
+        .eq('id', user.id)
+        .single();
+      
+      if (!error && profile) {
+        firstName = profile.first_name || '';
+        lastName = profile.last_name || '';
+        console.log('✅ Profile data fetched for Novu:', { 
+          userId: user.id,
+          firstName, 
+          lastName, 
+          email: user.email 
+        });
+      } else {
+        throw error;
+      }
     } catch (profileError) {
       console.error('❌ Error fetching profile for Novu registration:', profileError);
-      // Fall back to user object if available
-      firstName = user.first_name || '';
-      lastName = user.last_name || '';
+      // Fall back to user metadata if available
+      firstName = user.user_metadata?.first_name || '';
+      lastName = user.user_metadata?.last_name || '';
       console.log('⚠️ Using fallback user data:', { firstName, lastName });
     }
 
     // Register subscriber via server-side API (secure)
-    console.log('🚀 Calling /api/novu/register-subscriber with:', {
+    const subscriberApiUrl = '/api/novu/register-subscriber';
+    console.log('🚀 Calling API:', subscriberApiUrl);
+    console.log('📤 Request payload:', {
       subscriberId: user.id,
       email: user.email,
       firstName: firstName,
       lastName: lastName,
     });
 
-    const subscriberResponse = await fetch('/api/novu/register-subscriber', {
+    const subscriberResponse = await fetch(subscriberApiUrl, {
       method: 'POST',
       credentials: 'include',
       headers: {
@@ -202,10 +216,12 @@ async function registerPushCredentials(
     // Convert subscription to JSON
     const subscriptionJSON = subscription.toJSON();
     
+    const pushApiUrl = '/api/novu/register-push';
     console.log('Registering push credentials for subscriber:', userId);
+    console.log('🌐 Calling API:', pushApiUrl);
 
     // Use server-side API endpoint for secure registration
-    const response = await fetch('/api/novu/register-push', {
+    const response = await fetch(pushApiUrl, {
       method: 'POST',
       credentials: 'include', // Ensure cookies are sent for authentication
       headers: {

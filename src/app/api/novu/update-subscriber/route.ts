@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import PocketBase from 'pocketbase';
 
 /**
  * API endpoint to update subscriber information in Novu

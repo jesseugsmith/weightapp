@@ -4,8 +4,8 @@ import { useState, useEffect } from 'react';
 
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { useAuth } from '@/hooks/useAuth';
-import { usePermissions } from '@/contexts/PermissionContext';
-import pb from '@/lib/pocketbase';
+import { usePermissions } from '@/contexts/PermissionsContext';
+import { createBrowserClient } from '@/lib/supabase';
 
 interface AuditLog {
   id: string;
@@ -75,14 +75,18 @@ export default function AuditLogs() {
         return;
       }
 
-      // Build the filter for PocketBase
-      let filter = '';
-      const filters: string[] = [];
+      const supabase = createBrowserClient();
+
+      // Build the query for Supabase
+      let query = supabase
+        .from('audit_logs')
+        .select('*, performed_by(*)')
+        .order('created', { ascending: false });
 
       if (startDate) {
         try {
           const formattedStartDate = new Date(startDate).toISOString();
-          filters.push(`created >= "${formattedStartDate}"`);
+          query = query.gte('created', formattedStartDate);
         } catch (dateError) {
           console.error('Start date formatting error:', dateError);
           setError('Invalid start date format');
@@ -94,7 +98,7 @@ export default function AuditLogs() {
       if (endDate) {
         try {
           const formattedEndDate = new Date(endDate).toISOString();
-          filters.push(`created <= "${formattedEndDate}"`);
+          query = query.lte('created', formattedEndDate);
         } catch (dateError) {
           console.error('End date formatting error:', dateError);
           setError('Invalid end date format');
@@ -103,26 +107,20 @@ export default function AuditLogs() {
         }
       }
 
-      if (filters.length > 0) {
-        filter = filters.join(' && ');
-      }
+      // Fetch audit logs from Supabase
+      const { data, error: logsError } = await query;
 
-      // Fetch audit logs from PocketBase
-      const data = await pb.collection('audit_logs').getFullList<AuditLog>({
-        filter: filter || undefined,
-        sort: '-created',
-        expand: 'performed_by',
-      });
+      if (logsError) throw logsError;
 
       setDebugInfo(prev => ({
         ...prev,
         logsError: null,
       }));
 
-      // Enrich logs with user email if expanded
-      const enrichedLogs = data.map(log => ({
+      // Enrich logs with user email
+      const enrichedLogs = (data || []).map((log: any) => ({
         ...log,
-        performed_by_email: log.expand?.performed_by?.email || log.performed_by,
+        performed_by_email: log.performed_by?.email || log.performed_by,
       }));
 
       setLogs(enrichedLogs);

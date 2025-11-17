@@ -3,14 +3,15 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { pb } from '@/lib/pocketbase';
+import { supabase } from '@/lib/supabase';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import Link from 'next/link';
 
 export default function SignUpForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isValidToken, setIsValidToken] = useState(false);
@@ -31,10 +32,13 @@ export default function SignUpForm() {
     const validateToken = async () => {
       try {
         // Check if token exists in competition_invite_codes or similar
-        const inviteCode = await pb.collection('competition_invite_codes').getFirstListItem(
-          `code = "${token}"`
-        );
-        setIsValidToken(!!inviteCode);
+        const { data: inviteCode, error } = await supabase
+          .from('competition_invite_codes')
+          .select('*')
+          .eq('code', token)
+          .single();
+        
+        setIsValidToken(!!inviteCode && !error);
       } catch (error) {
         console.error('Token validation error:', error);
         setError('Invalid or expired signup link');
@@ -77,7 +81,7 @@ export default function SignUpForm() {
       setError('');
       setSuccess('');
       
-      const result = await signUp(email, password, name);
+      const result = await signUp(email, password, firstName, lastName);
       
       if (result.error) {
         setError(result.error);
@@ -172,16 +176,30 @@ export default function SignUpForm() {
               <div className="rounded-md shadow-sm -space-y-px">
                 <div>
                   <input
-                    id="name"
-                    name="name"
+                    id="first-name"
+                    name="firstName"
                     type="text"
-                    autoComplete="name"
+                    autoComplete="given-name"
                     required
                     disabled={isProcessing}
                     className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-700 bg-dark-secondary placeholder-gray-400 text-dark-primary rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                    placeholder="Full name"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
+                    placeholder="First name"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <input
+                    id="last-name"
+                    name="lastName"
+                    type="text"
+                    autoComplete="family-name"
+                    required
+                    disabled={isProcessing}
+                    className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-700 bg-dark-secondary placeholder-gray-400 text-dark-primary focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                    placeholder="Last name"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
                   />
                 </div>
                 <div>

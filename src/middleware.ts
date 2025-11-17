@@ -1,35 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Routes that require authentication
-const PROTECTED_ROUTES = [
-  '/dashboard',
-  '/home',
-  '/competitions',
-  '/profile',
-  '/admin',
-  '/settings',
-];
+// Only allow the landing page and API routes
+const ALLOWED_ROUTES = ['/', '/api'];
 
-// Routes that should redirect authenticated users away
-const AUTH_ROUTES = [
-  '/signin',
-  '/signup'
-];
-
-// Public routes that don't require authentication
-const PUBLIC_ROUTES = [
-  '/',
-  '/signin',
-  '/signup',
-  '/api'
-];
-
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const url = request.nextUrl.clone();
-  
-  // Check if user has auth token (PocketBase stores it in localStorage, 
-  // but for SSR we'd need to check cookies or implement server-side session)
-  // For now, we'll do basic path-based routing
   
   // Allow API routes, static files, and favicon
   if (
@@ -41,9 +16,13 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // For protected routes, we'll let the client-side auth handle redirects
-  // since PocketBase auth is primarily client-side
-  return NextResponse.next();
+  // Allow only the landing page
+  if (url.pathname === '/') {
+    return NextResponse.next();
+  }
+
+  // Redirect all other routes to the landing page
+  return NextResponse.redirect(new URL('/', request.url));
 }
 
 export const config = {

@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useMemo } from "react"
+import { useMemo, useEffect, useState } from "react"
 import {
   BookOpen,
   Bot,
@@ -19,12 +19,13 @@ import {
   type LucideIcon,
   CloudLightning,
   Key,
+  MessageCircle,
 } from "lucide-react"
 
 import { NavMain } from "@/components/nav-main"
 import { NavSecondary } from "@/components/nav-secondary"
 import { NavUser } from "@/components/nav-user"
-import LogWeightModal from "@/components/LogWeightModal"
+import LogActivityModal from "@/components/LogActivityModal"
 import {
   Sidebar,
   SidebarContent,
@@ -34,11 +35,12 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { usePermissions } from "@/contexts/PermissionContext"
+import { usePermissions } from "@/contexts/PermissionsContext"
 import { useAuth } from "@/hooks/useAuth"
-import { useProfile } from "@/hooks/useProfile"
-import pb from "@/lib/pocketbase"
+import { createBrowserClient } from "@/lib/supabase"
+import type { Profile } from "@/types/supabase.types"
 import { usePathname, useRouter } from "next/navigation"
+import { useUnreadMessageCount, UnreadBadge } from "@/components/UnreadMessageCount"
 
 const data = {
   user: {
@@ -71,9 +73,30 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     const router = useRouter();
     const pathname = usePathname();
     const { user, signOut } = useAuth();
-    const { profile } = useProfile();
     const { hasPermission, hasRole } = usePermissions();
-    const [isLogWeightModalOpen, setIsLogWeightModalOpen] = React.useState(false);
+    const [isLogActivityModalOpen, setIsLogActivityModalOpen] = React.useState(false);
+    const [profile, setProfile] = useState<Profile | null>(null);
+    const supabase = createBrowserClient();
+    const { totalUnreadCount } = useUnreadMessageCount();
+    
+    // Fetch user profile
+    useEffect(() => {
+      const fetchProfile = async () => {
+        if (!user?.id) return;
+        
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+        
+        if (!error && data) {
+          setProfile(data);
+        }
+      };
+      
+      fetchProfile();
+    }, [user?.id, supabase]);
     
     // Check if user has any admin permissions
     const hasAdminAccess = hasPermission('manage_users') || 
@@ -106,6 +129,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           icon: Bot,
           items: [],
         },
+        {
+          title: "Messages",
+          url: "/messaging",
+          icon: MessageCircle,
+          items: [],
+        },
       ];
       
       // Add admin menu item if user has admin access
@@ -135,18 +164,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         user: {
           name: profile?.first_name && profile?.last_name 
             ? `${profile.first_name} ${profile.last_name}` 
-            : "User",
+            : profile?.first_name || "User",
           email: user?.email || '',
-          avatar: user?.avatar 
-            ? pb.files.getURL(user, user.avatar) 
-            : '/avatars/default.png',
+          avatar: profile?.photo_url || profile?.avatar || '/default-avatar.svg',
         },
         navMain,
         navSecondary: [
           {
-            title: "Log Weight",
+            title: "Log Activity",
             icon: Scale,
-            onClick: () => setIsLogWeightModalOpen(true),
+            onClick: () => setIsLogActivityModalOpen(true),
           },
           {
             title: "API Tokens",
@@ -170,24 +197,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       router.push('/signin');
     };
   
-    // Get avatar URL from user or profile
-    const getAvatarUrl = () => {
-      // First try to get avatar from user object
-      if (user?.avatar) {
-        return pb.files.getURL(user, user.avatar);
-      }
-      // Then try from profile
-      if (profile?.avatar) {
-        return pb.files.getURL(profile, profile.avatar);
-      }
-      // Try photo_url from profile
-      if (profile?.photo_url) {
-        return profile.photo_url;
-      }
-      return null;
-    };
-  
-    const avatarUrl = getAvatarUrl();
   return (
     <Sidebar variant="inset" {...props}>
       <SidebarHeader> 
@@ -199,7 +208,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   <CloudLightning className="size-4 "/>
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">FitClash</span>
+                  <span className="truncate font-semibold">challngr</span>
                   <span className="truncate text-xs">An Absent Application</span>
                 </div>
               </a>
@@ -208,18 +217,18 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <NavMain items={navigationData.navMain} />
+        <NavMain items={navigationData.navMain} unreadCount={totalUnreadCount} />
         <NavSecondary items={navigationData.navSecondary} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>
         <NavUser user={navigationData.user} />
       </SidebarFooter>
-      <LogWeightModal
-        isOpen={isLogWeightModalOpen}
-        onClose={() => setIsLogWeightModalOpen(false)}
+      <LogActivityModal
+        isOpen={isLogActivityModalOpen}
+        onClose={() => setIsLogActivityModalOpen(false)}
         userId={user?.id || ''}
-        onWeightLogged={() => {
-          setIsLogWeightModalOpen(false);
+        onActivityLogged={() => {
+          setIsLogActivityModalOpen(false);
           // Optionally refresh data
         }}
       />

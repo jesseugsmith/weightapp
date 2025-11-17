@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import PocketBase from 'pocketbase';
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
+import type { ActivityEntry } from '@/types/supabase.types';
 
 /**
  * POST /api/weight
@@ -40,37 +42,52 @@ export async function POST(req: NextRequest) {
       preview: `${token.substring(0, 10)}...${token.substring(token.length - 10)}`
     });
 
-    // Initialize PocketBase
-    const pb = new PocketBase(process.env.NEXT_PUBLIC_POCKETBASE_URL || 'http://localhost:8090');
-    console.log('🔌 PocketBase URL:', process.env.NEXT_PUBLIC_POCKETBASE_URL || 'http://localhost:8090');
-
-    // Authenticate as admin to query the api_tokens collection
-    // Note: This is safe because we're only reading tokens, not exposing admin access
-    try {
-      await pb.admins.authWithPassword(
-        process.env.POCKETBASE_ADMIN_EMAIL || 'admin@example.com',
-        process.env.POCKETBASE_ADMIN_PASSWORD || 'admin123456'
-      );
-      console.log('✅ Authenticated as admin');
-    } catch (adminError) {
-      console.error('❌ Failed to authenticate as admin:', adminError);
-      return NextResponse.json(
-        { error: 'Server configuration error' },
-        { status: 500 }
-      );
-    }
+    // Initialize Supabase client
+    const cookieStore = await cookies();
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll();
+          },
+          setAll(cookiesToSet) {
+            try {
+              cookiesToSet.forEach(({ name, value, options }) =>
+                cookieStore.set(name, value, options)
+              );
+            } catch {
+              // The `setAll` method was called from a Server Component.
+              // This can be ignored if you have middleware refreshing
+              // user sessions.
+            }
+          },
+        },
+      }
+    );
 
     // Verify the token exists and is active
     let apiToken;
     try {
       console.log('🔍 Searching for token in database...');
-      const tokens = await pb.collection('api_tokens').getFullList({
-        filter: `token = "${token}" && is_active = true`,
-      });
+      const { data: tokens, error } = await supabase
+        .from('api_tokens')
+        .select('*')
+        .eq('token', token)
+        .eq('is_active', true);
+
+      if (error) {
+        console.error('❌ Error querying tokens:', error);
+        return NextResponse.json(
+          { error: 'Invalid API token' },
+          { status: 401 }
+        );
+      }
 
       console.log('📊 Token search results:', {
-        found: tokens.length,
-        tokens: tokens.map((t: any) => ({
+        found: tokens?.length || 0,
+        tokens: tokens?.map((t: any) => ({
           id: t.id,
           name: t.name,
           is_active: t.is_active,
@@ -79,22 +96,8 @@ export async function POST(req: NextRequest) {
         }))
       });
 
-      if (tokens.length === 0) {
+      if (!tokens || tokens.length === 0) {
         console.log('❌ No matching active token found');
-        
-        // Let's check if the token exists but is inactive
-        const allTokens = await pb.collection('api_tokens').getFullList({
-          filter: `token = "${token}"`,
-        });
-        console.log('🔍 All tokens with this value:', {
-          count: allTokens.length,
-          details: allTokens.map((t: any) => ({
-            id: t.id,
-            is_active: t.is_active,
-            expires_at: t.expires_at
-          }))
-        });
-        
         return NextResponse.json(
           { error: 'Invalid or inactive API token' },
           { status: 401 }
@@ -154,36 +157,60 @@ export async function POST(req: NextRequest) {
     }
 
     // Use provided date or current date
-    const entryDate = date || new Date().toISOString().split('T')[0];
+    const entryDate = date || new Date().toISOString();
     console.log('📅 Entry date:', entryDate);
 
-    // Create the weight entry
-    console.log('💾 Creating weight entry...');
-    const weightEntry = await pb.collection('weight_entries').create({
-      user_id: apiToken.user_id,
-      weight,
-      date: entryDate,
-      notes: notes || '',
-    });
-    console.log('✅ Weight entry created:', weightEntry.id);
+    // Create the activity entry (using new activity_entries table)
+    console.log('💾 Creating activity entry...');
+    const { data: activityEntry, error: createError } = await supabase
+      .from('activity_entries')
+      .insert({
+        user_id: apiToken.user_id,
+        activity_type: 'weight',
+        value: weight,
+        unit: 'lbs',
+        date: entryDate,
+        notes: notes || null,
+        image_url: null,
+        metadata: null
+      })
+      .select()
+      .single();
+
+    if (createError) {
+      console.error('❌ Error creating activity entry:', createError);
+      return NextResponse.json(
+        { error: 'Failed to log weight' },
+        { status: 500 }
+      );
+    }
+
+    console.log('✅ Activity entry created:', activityEntry.id);
 
     // Update the token's last_used_at timestamp
     console.log('🕐 Updating token last_used_at...');
-    await pb.collection('api_tokens').update(apiToken.id, {
-      last_used_at: new Date().toISOString(),
-    });
-    console.log('✅ Token updated');
+    const { error: updateError } = await supabase
+      .from('api_tokens')
+      .update({ last_used_at: new Date().toISOString() })
+      .eq('id', apiToken.id);
+
+    if (updateError) {
+      console.error('❌ Error updating token:', updateError);
+      // Don't fail the request if token update fails
+    } else {
+      console.log('✅ Token updated');
+    }
 
     console.log('✅ Request completed successfully\n');
     return NextResponse.json({
       success: true,
       message: 'Weight logged successfully',
       entry: {
-        id: weightEntry.id,
-        weight: weightEntry.weight,
-        date: weightEntry.date,
-        notes: weightEntry.notes,
-        created: weightEntry.created,
+        id: activityEntry.id,
+        weight: activityEntry.value,
+        date: activityEntry.date,
+        notes: activityEntry.notes,
+        created_at: activityEntry.created_at,
       },
     }, { status: 201 });
   } catch (error: any) {
@@ -219,31 +246,41 @@ export async function GET(req: NextRequest) {
 
     const token = authHeader.substring(7);
 
-    // Initialize PocketBase
-    const pb = new PocketBase(process.env.NEXT_PUBLIC_POCKETBASE_URL || 'http://localhost:8090');
-
-    // Authenticate as admin to query the api_tokens collection
-    try {
-      await pb.admins.authWithPassword(
-        process.env.POCKETBASE_ADMIN_EMAIL || 'admin@example.com',
-        process.env.POCKETBASE_ADMIN_PASSWORD || 'admin123456'
-      );
-    } catch (adminError) {
-      console.error('Failed to authenticate as admin:', adminError);
-      return NextResponse.json(
-        { error: 'Server configuration error' },
-        { status: 500 }
-      );
-    }
+    // Initialize Supabase client
+    const cookieStore = await cookies();
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll();
+          },
+          setAll(cookiesToSet) {
+            try {
+              cookiesToSet.forEach(({ name, value, options }) =>
+                cookieStore.set(name, value, options)
+              );
+            } catch {
+              // The `setAll` method was called from a Server Component.
+              // This can be ignored if you have middleware refreshing
+              // user sessions.
+            }
+          },
+        },
+      }
+    );
 
     // Verify the token
     let apiToken;
     try {
-      const tokens = await pb.collection('api_tokens').getFullList({
-        filter: `token = "${token}" && is_active = true`,
-      });
+      const { data: tokens, error } = await supabase
+        .from('api_tokens')
+        .select('*')
+        .eq('token', token)
+        .eq('is_active', true);
 
-      if (tokens.length === 0) {
+      if (error || !tokens || tokens.length === 0) {
         return NextResponse.json(
           { error: 'Invalid or inactive API token' },
           { status: 401 }
@@ -273,23 +310,44 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(req.nextUrl.searchParams.get('limit') || '30');
     const offset = parseInt(req.nextUrl.searchParams.get('offset') || '0');
 
-    // Get weight entries
-    const entries = await pb.collection('weight_entries').getList(1, limit, {
-      filter: `user_id = "${apiToken.user_id}"`,
-      sort: '-date,-created',
-    });
+    // Get weight entries from activity_entries table
+    const { data: entries, error: entriesError } = await supabase
+      .from('activity_entries')
+      .select('*')
+      .eq('user_id', apiToken.user_id)
+      .eq('activity_type', 'weight')
+      .order('date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (entriesError) {
+      console.error('Error fetching weight entries:', entriesError);
+      return NextResponse.json(
+        { error: 'Failed to fetch weight entries' },
+        { status: 500 }
+      );
+    }
 
     // Update last_used_at
-    await pb.collection('api_tokens').update(apiToken.id, {
-      last_used_at: new Date().toISOString(),
-    });
+    await supabase
+      .from('api_tokens')
+      .update({ last_used_at: new Date().toISOString() })
+      .eq('id', apiToken.id);
+
+    // Transform entries to match expected format
+    const transformedEntries = entries?.map((entry: ActivityEntry) => ({
+      id: entry.id,
+      weight: entry.value,
+      date: entry.date,
+      notes: entry.notes,
+      created: entry.created_at,
+      user_id: entry.user_id
+    })) || [];
 
     return NextResponse.json({
       success: true,
-      entries: entries.items,
-      page: entries.page,
-      totalPages: entries.totalPages,
-      totalItems: entries.totalItems,
+      entries: transformedEntries,
+      totalItems: transformedEntries.length,
     });
   } catch (error: any) {
     console.error('Error fetching weight entries:', error);

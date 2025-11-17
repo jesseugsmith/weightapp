@@ -62,7 +62,7 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 # FitClash - Open Source Weight Competition App
 
-FitClash is a fully open-source weight tracking and competition platform built with Next.js and PocketBase.
+FitClash is a fully open-source weight tracking and competition platform built with Next.js and Supabase.
 
 ## 🚀 Features
 
@@ -72,7 +72,7 @@ FitClash is a fully open-source weight tracking and competition platform built w
 - 👥 **Social Features**: Invite friends and compete together
 - 🔐 **Secure Authentication**: Email/password and OAuth support
 - 📱 **Responsive Design**: Works on desktop and mobile devices
-- 🔔 **Smart Notifications**: Daily email/push notifications via Novu with PocketBase cron hooks
+- 🔔 **Smart Notifications**: Daily email/push notifications via Novu
   - Daily weight log reminders
   - Progress updates with rankings
   - Competition milestone alerts
@@ -82,8 +82,8 @@ FitClash is a fully open-source weight tracking and competition platform built w
 
 - **Frontend**: Next.js 15, React 19, TypeScript
 - **Styling**: Tailwind CSS
-- **Backend**: PocketBase (SQLite)
-- **Authentication**: PocketBase Auth (Email/Password, OAuth)
+- **Backend**: Supabase (PostgreSQL)
+- **Authentication**: Supabase Auth (Email/Password, OAuth)
 - **Notifications**: Novu (Email, Push, In-App)
 - **Charts**: Chart.js, Recharts
 - **UI Components**: Radix UI, Shadcn UI
@@ -91,7 +91,7 @@ FitClash is a fully open-source weight tracking and competition platform built w
 
 ## 🔔 Notification System
 
-FitClash includes a comprehensive notification system powered by Novu and PocketBase cron hooks:
+FitClash includes a comprehensive notification system powered by Novu:
 
 ### Features
 - **Daily Weight Reminders**: Automatic reminders at 9:00 AM for users who haven't logged
@@ -102,14 +102,9 @@ FitClash includes a comprehensive notification system powered by Novu and Pocket
 
 ### Quick Setup
 1. Sign up at [novu.co](https://novu.co) and get your API key
-2. Configure in PocketBase Admin → Settings → Meta → `novuApiKey`
+2. Set the `NOVU_API_KEY` environment variable
 3. Set up workflows in Novu dashboard (see [`docs/NOVU_WORKFLOWS.md`](./docs/NOVU_WORKFLOWS.md))
-4. The cron hooks will automatically run daily at 9:00 AM
-
-### Documentation
-- 📖 [Complete Setup Guide](./pocketbase/hooks/NOTIFICATIONS_SETUP.md)
-- 📧 [Email Templates & Workflows](./docs/NOVU_WORKFLOWS.md)
-- 🧪 [Testing Guide](./pocketbase/hooks/README.md#testing)
+4. Configure scheduled tasks via Supabase Edge Functions or external cron jobs
 
 ## 📦 Project Structure
 
@@ -128,20 +123,11 @@ cd weightapp
 npm install
 ```
 
-### 2. Set Up PocketBase
+### 2. Set Up Supabase
 
-Run the automated setup script:
-
-```bash
-chmod +x setup-pocketbase.sh
-./setup-pocketbase.sh
-```
-
-This will:
-- Download and install PocketBase
-- Import the database schema
-- Seed roles and permissions
-- Start the PocketBase server
+1. Create a new Supabase project at [supabase.com](https://supabase.com)
+2. Get your project URL and anon key from the project settings
+3. Apply database migrations (see Database Setup section above)
 
 ### 3. Configure Environment
 
@@ -152,7 +138,9 @@ cp .env.local.example .env.local
 Update `.env.local` with your configuration:
 
 ```env
-NEXT_PUBLIC_POCKETBASE_URL=http://localhost:8090
+NEXT_PUBLIC_SUPABASE_URL=your-supabase-url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
+NOVU_API_KEY=your-novu-api-key
 ```
 
 ### 4. Start Development Server
@@ -163,43 +151,15 @@ npm run dev
 
 Visit:
 - **App**: http://localhost:3000
-- **PocketBase Admin**: http://localhost:8090/_/
-
-## 🔧 Manual PocketBase Setup
-
-If you prefer manual setup:
-
-### 1. Download PocketBase
-
-```bash
-# Download for your platform from https://pocketbase.io/docs/
-wget https://github.com/pocketbase/pocketbase/releases/download/v0.22.0/pocketbase_0.22.0_darwin_amd64.zip
-unzip pocketbase_0.22.0_darwin_amd64.zip
-```
-
-### 2. Import Schema
-
-```bash
-./pocketbase serve --dir=./pb_data
-# In another terminal:
-./pocketbase admin create admin@example.com admin123456 --dir=./pb_data
-```
-
-Then import `collections_schema.json` via the admin UI at http://localhost:8090/_/
-
-### 3. Seed Data
-
-```bash
-node seed_roles.js
-```
+- **Supabase Dashboard**: https://app.supabase.com
 
 ## 📋 Database Schema
 
-The application uses 13 PocketBase collections:
+The application uses Supabase PostgreSQL tables:
 
-### Core Collections
-- **users**: Authentication and user data
-- **user_profiles**: Extended user profile information
+### Core Tables
+- **auth.users**: Authentication and user data (managed by Supabase)
+- **profiles**: Extended user profile information
 - **weight_entries**: Daily weight logs
 - **competitions**: Weight loss competitions
 - **competition_participants**: Competition membership
@@ -219,12 +179,12 @@ The application uses 13 PocketBase collections:
 ## 🔐 Authentication
 
 ### Email/Password
-Users can register with email and password. Email verification is handled by PocketBase.
+Users can register with email and password. Email verification is handled by Supabase.
 
 ### OAuth Providers
-Configure OAuth providers in PocketBase admin:
-1. Go to http://localhost:8090/_/settings/auth-providers
-2. Enable Google OAuth
+Configure OAuth providers in Supabase dashboard:
+1. Go to Authentication → Providers in your Supabase project
+2. Enable Google OAuth (or other providers)
 3. Add your OAuth credentials
 
 ### Role-Based Permissions
@@ -242,11 +202,9 @@ Configure OAuth providers in PocketBase admin:
 npm run build
 ```
 
-2. **Set up production PocketBase**:
-```bash
-# Copy PocketBase binary to server
-./pocketbase serve --http=0.0.0.0:8090 --dir=./pb_data
-```
+2. **Configure Supabase**:
+   - Ensure your production Supabase project is set up
+   - Configure environment variables with production Supabase credentials
 
 3. **Serve Next.js**:
 ```bash
@@ -259,7 +217,9 @@ npm start
 ### Environment Variables (Production)
 
 ```env
-NEXT_PUBLIC_POCKETBASE_URL=https://api.yourdomain.com
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-production-anon-key
+NOVU_API_KEY=your-novu-api-key
 ```
 
 ## 🧪 Development
@@ -267,17 +227,19 @@ NEXT_PUBLIC_POCKETBASE_URL=https://api.yourdomain.com
 ### Database Migrations
 
 When you update the schema:
-1. Export from PocketBase admin: Collections → Export collections
-2. Update `collections_schema.json`
-3. Test import on fresh PocketBase instance
+1. Create a new migration file in `supabase/migrations/`
+2. Apply the migration using Supabase CLI: `supabase db push`
+3. Test the migration on a development database first
 
 ### Adding Permissions
 
-Update `seed_roles.js` to add new roles or permissions:
+Add new roles or permissions directly in the database or via migrations:
 
-```javascript
-await createPermission(pb, 'new_permission', 'Description');
-await assignPermissionToRole(pb, 'admin', 'new_permission');
+```sql
+INSERT INTO permissions (name, description) VALUES ('new_permission', 'Description');
+INSERT INTO role_permissions (role_id, permission_id) 
+SELECT r.id, p.id FROM roles r, permissions p 
+WHERE r.name = 'admin' AND p.name = 'new_permission';
 ```
 
 ## 🔍 API Examples
@@ -285,29 +247,38 @@ await assignPermissionToRole(pb, 'admin', 'new_permission');
 ### Creating a Weight Entry
 
 ```typescript
-import { pb } from '@/lib/pocketbase';
+import { createBrowserClient } from '@/lib/supabase';
 
-const entry = await pb.collection('weight_entries').create({
-  user_id: user.id,
-  weight: 175.5,
-  date: '2024-01-15',
-  notes: 'Morning weigh-in'
-});
+const supabase = createBrowserClient();
+const { data: entry } = await supabase
+  .from('weight_entries')
+  .insert({
+    user_id: user.id,
+    weight: 175.5,
+    date: '2024-01-15',
+    notes: 'Morning weigh-in'
+  })
+  .select()
+  .single();
 ```
 
 ### Joining a Competition
 
 ```typescript
-const participation = await pb.collection('competition_participants').create({
-  competition_id: 'comp123',
-  user_id: user.id,
-  start_weight: 180.0
-});
+const { data: participation } = await supabase
+  .from('competition_participants')
+  .insert({
+    competition_id: 'comp123',
+    user_id: user.id,
+    start_weight: 180.0
+  })
+  .select()
+  .single();
 ```
 
 ## 🎯 Roadmap
 
-- [ ] Mobile app (React Native + PocketBase)
+- [ ] Mobile app (React Native + Supabase)
 - [ ] Advanced analytics and charts
 - [ ] Team competitions
 - [ ] Achievement system
@@ -328,7 +299,7 @@ This project is open source and available under the [MIT License](LICENSE).
 
 ## 🙏 Acknowledgments
 
-- [PocketBase](https://pocketbase.io/) - Amazing backend-as-a-service
+- [Supabase](https://supabase.com/) - Open source Firebase alternative
 - [Next.js](https://nextjs.org/) - React framework
 - [Tailwind CSS](https://tailwindcss.com/) - Utility-first CSS
 

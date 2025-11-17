@@ -1,11 +1,12 @@
 import { NextRequest } from 'next/server';
-import PocketBase from 'pocketbase';
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
 
 /**
- * Get authenticated PocketBase instance for server-side operations
- * Reads auth token from Authorization header
+ * Get authenticated Supabase instance for server-side operations
+ * Reads auth token from Authorization header or cookies
  */
-export async function getAuthenticatedPB(request: NextRequest): Promise<{ pb: PocketBase; user: any } | null> {
+export async function getAuthenticatedSupabase(request: NextRequest): Promise<{ supabase: any; user: any } | null> {
   try {
     // Get token from Authorization header
     const authHeader = request.headers.get('authorization');
@@ -32,33 +33,55 @@ export async function getAuthenticatedPB(request: NextRequest): Promise<{ pb: Po
       return null;
     }
 
-    // Initialize PocketBase and set the token
-    const pb = new PocketBase(process.env.NEXT_PUBLIC_POCKETBASE_URL || 'http://localhost:8090');
-    pb.authStore.save(token, null);
+    // Create Supabase server client
+    const cookieStore = await cookies();
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll();
+          },
+          setAll(cookiesToSet) {
+            try {
+              cookiesToSet.forEach(({ name, value, options }) =>
+                cookieStore.set(name, value, options)
+              );
+            } catch {
+              // The `setAll` method was called from a Server Component.
+              // This can be ignored if you have middleware refreshing
+              // user sessions.
+            }
+          },
+        },
+      }
+    );
     
-    console.log('💾 Token saved to authStore');
+    console.log('💾 Supabase client created');
     
     // Verify the token by fetching the user
     try {
-      const authData = await pb.collection('users').authRefresh();
+      const { data: { user }, error } = await supabase.auth.getUser(token);
       
-      if (!authData || !authData.record) {
-        console.log('❌ Token validation failed - no auth data');
+      if (error || !user) {
+        console.log('❌ Token validation failed:', error?.message);
         return null;
       }
       
-      console.log('✅ Auth verified for user:', authData.record.id);
-      return { pb, user: authData.record };
-    } catch (refreshError: any) {
-      console.error('❌ Token refresh failed:', {
-        message: refreshError.message,
-        status: refreshError.status,
-        data: refreshError.data
+      console.log('✅ Auth verified for user:', user.id);
+      return { supabase, user };
+    } catch (verifyError: any) {
+      console.error('❌ Token verification failed:', {
+        message: verifyError.message
       });
       return null;
     }
   } catch (error) {
-    console.error('❌ Error getting authenticated PocketBase:', error);
+    console.error('❌ Error getting authenticated Supabase:', error);
     return null;
   }
 }
+
+// Keep old function name for backward compatibility
+export const getAuthenticatedPB = getAuthenticatedSupabase;

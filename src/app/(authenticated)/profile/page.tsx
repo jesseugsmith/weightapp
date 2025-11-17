@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
-import { pb } from '@/lib/pocketbase';
+import { createBrowserClient } from '@/lib/supabase';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import ProfilePhotoUpload from '@/components/ProfilePhotoUpload';
 
@@ -26,8 +26,8 @@ function formatDateForInput(dateString: string): string {
   }
 }
 
-// Helper function to validate and format date for PocketBase
-function formatDateForPocketBase(dateString: string): string | null {
+// Helper function to validate and format date for database
+function formatDateForDatabase(dateString: string): string | null {
   if (!dateString) return null;
   
   // Validate YYYY-MM-DD format
@@ -83,7 +83,16 @@ export default function ProfilePage() {
         console.log('Fetching profile for user:', user.id);
 
         // Get the existing profile
-        const profile = await pb.collection('profiles').getFirstListItem(`user_id = "${user.id}"`);
+        const supabase = createBrowserClient();
+        const { data: profile, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        if (error && error.code !== 'PGRST116') { // PGRST116 is "not found" error
+          throw error;
+        }
 
         if (profile) {
           console.log('Profile data:', profile);
@@ -134,16 +143,20 @@ export default function ProfilePage() {
 
       // Build updates object with all fields and ensure user_id is included
       const updates: Record<string, any> = {
-        user_id: user.id, // Always include user_id
         first_name: profile.first_name.trim() || null,
         last_name: profile.last_name.trim() || null,
         nickname: profile.nickname.trim() || null
       };
 
 
-      // Get the existing profile to update it
-      const existingProfile = await pb.collection('profiles').getFirstListItem(`user_id = "${user.id}"`);
-      await pb.collection('profiles').update(existingProfile.id, updates);
+      // Update the profile using Supabase
+      const supabase = createBrowserClient();
+      const { error } = await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('id', user.id);
+
+      if (error) throw error;
 
       setMessage({
         type: 'success',

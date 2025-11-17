@@ -22,6 +22,7 @@ import {
 
 export function NavMain({
   items,
+  unreadCount,
 }: {
   items: {
     title: string
@@ -33,6 +34,7 @@ export function NavMain({
       url: string
     }[]
   }[]
+  unreadCount?: number
 }) {
   return (
     <SidebarGroup>
@@ -42,9 +44,14 @@ export function NavMain({
           <Collapsible key={item.title} asChild defaultOpen={item.isActive}>
             <SidebarMenuItem>
               <SidebarMenuButton asChild tooltip={item.title}>
-                <Link href={item.url}>
+                <Link href={item.url} className="flex items-center w-full">
                   <item.icon />
-                  <span>{item.title}</span>
+                  <span className="flex-1">{item.title}</span>
+                  {item.title === "Messages" && unreadCount && unreadCount > 0 && (
+                    <span className="inline-flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-red-500 rounded-full ml-auto">
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
+                  )}
                 </Link>
               </SidebarMenuButton>
               {item.items?.length ? (

@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { pb } from '@/lib/pocketbase';
-import { Profile } from '@/types/database.types';
+import { createBrowserClient } from '@/lib/supabase';
+import { useAuth } from '@/hooks/useAuth';
+import { Profile } from '@/types/supabase.types';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { getBaseUrl } from '@/utils/environment';
 
@@ -13,13 +14,19 @@ interface InviteMembersModalProps {
   competitionName: string;
 }
 
+// Extended profile with email from auth.users
+interface ProfileWithEmail extends Profile {
+  email: string;
+}
+
 export default function InviteMembersModal({
   isOpen,
   onClose,
   competitionId,
   competitionName,
 }: InviteMembersModalProps) {
-  const [users, setUsers] = useState<Profile[]>([]);
+  const { user: authUser } = useAuth();
+  const [users, setUsers] = useState<ProfileWithEmail[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -37,40 +44,70 @@ export default function InviteMembersModal({
       setLoading(true);
       setError(null);
 
-      // Get current user
-      const user = pb.authStore.model;
-      if (!user) {
+      if (!authUser) {
         setError('Not authenticated');
         return;
       }
 
+      const supabase = createBrowserClient();
+
       // First, get existing participants
-      const participants = await pb.collection('competition_participants').getFullList({
-        filter: `competition_id = "${competitionId}"`
-      });
+      const { data: participants, error: participantsError } = await supabase
+        .from('competition_participants')
+        .select('user_id')
+        .eq('competition_id', competitionId);
+
+      if (participantsError) throw participantsError;
 
       // Then, get pending invites (if you have this collection)
       let pendingInvites: any[] = [];
       try {
-        pendingInvites = await pb.collection('competition_invites').getFullList({
-          filter: `competition_id = "${competitionId}" && status = "pending"`
-        });
+        const { data: invites, error: invitesError } = await supabase
+          .from('competition_invites')
+          .select('user_id')
+          .eq('competition_id', competitionId)
+          .eq('status', 'pending');
+
+        if (!invitesError) {
+          pendingInvites = invites || [];
+        }
       } catch (error) {
         // Ignore if collection doesn't exist
-        console.log('Competition invites collection not available');
+        console.log('Competition invites table not available');
       }
 
       // Create arrays of IDs to exclude
       const participantIds = participants?.map((p: any) => p.user_id) || [];
       const inviteeIds = pendingInvites?.map((i: any) => i.user_id) || [];
-      const excludeIds = [...participantIds, ...inviteeIds, user.id];
+      const excludeIds = [...participantIds, ...inviteeIds, authUser.id];
 
       // Get all profiles
-      const allProfiles = await pb.collection('profiles').getFullList();
+      const { data: allProfiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('*');
 
-      // Filter out excluded users
-      const filteredUsers = allProfiles.filter((u: any) => !excludeIds.includes(u.user_id));
-      setUsers(filteredUsers as Profile[]);
+      if (profilesError) throw profilesError;
+
+      // Get auth users to get emails
+      const { data: { users: authUsers }, error: authError } = await supabase.auth.admin.listUsers();
+      
+      // Create a map of user_id to email
+      const emailMap = new Map<string, string>();
+      if (authUsers && !authError) {
+        authUsers.forEach((u: any) => {
+          emailMap.set(u.id, u.email || '');
+        });
+      }
+
+      // Filter out excluded users and add email
+      const filteredUsers = (allProfiles || [])
+        .filter((u: any) => !excludeIds.includes(u.id))
+        .map((profile: any) => ({
+          ...profile,
+          email: emailMap.get(profile.id) || 'No email'
+        })) as ProfileWithEmail[];
+        
+      setUsers(filteredUsers);
     } catch (error) {
       console.error('Error fetching users:', error);
       setError(error instanceof Error ? error.message : 'Failed to load available users');
@@ -85,9 +122,7 @@ export default function InviteMembersModal({
       setSuccessMessage(null);
       setInvitingUsers(prev => new Set(prev).add(userId));
 
-      // Get current user
-      const user = pb.authStore.model;
-      if (!user) {
+      if (!authUser) {
         setError('Not authenticated');
         return;
       }
@@ -98,33 +133,31 @@ export default function InviteMembersModal({
         return;
       }
 
-      // Create the invite (if you have this collection)
+      const supabase = createBrowserClient();
+
+      // Create the invite (if you have this table)
       try {
-        await pb.collection('competition_invites').create({
-          competition_id: competitionId,
-          email: invitedUser.email,
-          status: 'pending',
-          invited_by: user.id,
-          user_id: userId
-        });
-      } catch (error: any) {
-        if (error.status === 400) {
-          setError('User has already been invited');
-          return;
+        const { error: inviteError } = await supabase
+          .from('competition_invites')
+          .insert({
+            competition_id: competitionId,
+            email: invitedUser.email,
+            status: 'pending',
+            invited_by: authUser.id,
+            user_id: userId
+          });
+
+        if (inviteError && inviteError.code !== '42P01') { // 42P01 = table doesn't exist
+          throw inviteError;
         }
-        // If collection doesn't exist, continue without creating invite
-        console.log('Competition invites collection not available, skipping invite creation');
+      } catch (error: any) {
+        // If table doesn't exist, continue without creating invite
+        console.log('Competition invites table not available, skipping invite creation');
       }
 
-      // Create notification
-      await pb.collection('notifications').create({
-        user_id: userId,
-        title: 'Competition Invite',
-        message: `You've been invited to join "${competitionName}"!`,
-        type: 'info',
-        action_url: `${getBaseUrl()}/competitions/join/${competitionId}?email=${encodeURIComponent(invitedUser.email || '')}`,
-        is_read: false
-      });
+      // Note: We're using Novu for notifications now
+      // You can send a Novu notification here via API route if needed
+      // For now, we'll just show success
 
       // Remove the invited user from the list
       setUsers(prev => prev.filter(u => u.id !== userId));
@@ -144,7 +177,8 @@ export default function InviteMembersModal({
   const filteredUsers = searchQuery
     ? users.filter(user => 
         user.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        user.username?.toLowerCase().includes(searchQuery.toLowerCase())
+        user.first_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        user.last_name?.toLowerCase().includes(searchQuery.toLowerCase())
       )
     : users;
 
@@ -177,7 +211,7 @@ export default function InviteMembersModal({
         <div className="mb-4">
           <input
             type="text"
-            placeholder="Search by email or username..."
+            placeholder="Search by name or email..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
@@ -210,23 +244,23 @@ export default function InviteMembersModal({
                   <tr key={user.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
-                        {user.avatar_url ? (
+                        {user.avatar ? (
                           <img 
-                            src={user.avatar_url} 
-                            alt={user.username || user.email}
+                            src={user.avatar} 
+                            alt={`${user.first_name || ''} ${user.last_name || ''}`}
                             className="h-8 w-8 rounded-full"
                           />
                         ) : (
                           <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center">
                             <span className="text-sm text-gray-500">
-                              {(user.username || user.email || '?').charAt(0).toUpperCase()}
+                              {(user.first_name || user.email || '?').charAt(0).toUpperCase()}
                             </span>
                           </div>
                         )}
                         <div className="ml-4">
-                          {user.username && (
+                          {(user.first_name || user.last_name) && (
                             <div className="text-sm font-medium text-gray-900">
-                              {user.username}
+                              {user.first_name} {user.last_name}
                             </div>
                           )}
                           <div className="text-sm text-gray-500">

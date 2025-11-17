@@ -7,6 +7,8 @@ import {
   CreditCard,
   LogOut,
   Sparkles,
+  Settings,
+  Key,
 } from "lucide-react"
 
 import {
@@ -31,7 +33,6 @@ import {
 } from "@/components/ui/sidebar"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/hooks/useAuth"
-``
 
 export function NavUser({
   user,
@@ -90,9 +91,17 @@ export function NavUser({
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
+              <DropdownMenuItem onClick={() => router.push('/settings')}>
+                <Settings />
+                Settings
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => router.push('/api-tokens')}>
-                <BadgeCheck />
-                Account
+                <Key />
+                API Tokens
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push('/settings?tab=notifications')}>
+                <Bell />
+                Notifications
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />

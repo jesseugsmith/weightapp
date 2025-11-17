@@ -11,11 +11,11 @@
   --success: #4ade80;
   --error: #ef4444;
 
-  /* FitClash Brand Colors */
-  --fitclash-blue: #00D4FF;
-  --fitclash-orange: #FF6B35;
-  --fitclash-purple: #8B5CF6;
-  --fitclash-gradient: linear-gradient(135deg, var(--fitclash-blue), var(--fitclash-purple), var(--fitclash-orange));
+  /* challngr Brand Colors */
+  --challngr-blue: #00D4FF;
+  --challngr-orange: #FF6B35;
+  --challngr-purple: #8B5CF6;
+  --challngr-gradient: linear-gradient(135deg, var(--challngr-blue), var(--challngr-purple), var(--challngr-orange));
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -186,4 +186,98 @@ button {
     --chart-4: oklch(0.627 0.265 303.9);
     --chart-5: oklch(0.645 0.246 16.439);
   }
+}
+
+/* Custom animations and effects */
+@keyframes gradient {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.animate-gradient {
+  animation: gradient 3s ease infinite;
+}
+
+.bg-grid-pattern {
+  background-image: 
+    linear-gradient(to right, rgba(255, 255, 255, 0.1) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+  background-size: 50px 50px;
+}
+
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+/* Creative design elements */
+@keyframes float-slow {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-20px) rotate(5deg);
+  }
+}
+
+.float-slow {
+  animation: float-slow 6s ease-in-out infinite;
+}
+
+.creative-border {
+  position: relative;
+}
+
+.creative-border::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  padding: 2px;
+  background: linear-gradient(135deg, #00D4FF, transparent, #00D4FF);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.creative-border:hover::before {
+  opacity: 1;
+}
+
+.geometric-shape {
+  clip-path: polygon(0 0, 100% 0, 85% 100%, 0% 100%);
+}
+
+.geometric-shape-reverse {
+  clip-path: polygon(15% 0, 100% 0, 100% 100%, 0% 100%);
+}
+
+.diagonal-divider {
+  position: relative;
+  overflow: hidden;
+}
+
+.diagonal-divider::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 100px;
+  background: linear-gradient(to bottom right, transparent 49%, var(--background) 51%);
+  transform: skewY(-2deg);
+  transform-origin: bottom left;
+}
+
+.stagger-grid > *:nth-child(odd) {
+  transform: translateY(20px);
+}
+
+.stagger-grid > *:nth-child(even) {
+  transform: translateY(-20px);
 }

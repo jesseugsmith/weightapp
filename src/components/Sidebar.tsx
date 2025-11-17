@@ -1,11 +1,10 @@
 'use client';
 
 import { useRouter, usePathname } from 'next/navigation';
-import FitClashLogo from './FitClashLogo';
+import ChallngrLogo from './ChallngrLogo';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
-import { usePermissions } from '@/contexts/PermissionContext';
-import { pb } from '@/lib/pocketbase';
+import { usePermissions } from '@/contexts/PermissionsContext';
 import { useState } from 'react';
 import Image from 'next/image';
 
@@ -72,16 +71,20 @@ export default function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed
 
   const sidebarWidth = isCollapsed ? 'w-16' : 'w-64';
 
-  // Get avatar URL from user or profile
+  // Get avatar URL from profile (Supabase version)
   const getAvatarUrl = () => {
-    // First try to get avatar from user object
-    if (user && user.avatar) {
-      return pb.files.getURL(user, user.avatar);
-    }
+    // Supabase stores avatars in the profiles table or storage buckets
     if (profile && profile.avatar) {
-      return pb.files.getURL(profile, profile.avatar);
+      // If avatar is a full URL (from storage)
+      if (profile.avatar.startsWith('http')) {
+        return profile.avatar;
+      }
+      // If avatar is a storage path, construct the URL
+      // You'll need to implement storage bucket logic if using Supabase Storage
+      // For now, return the path as-is or a placeholder
+      return profile.avatar;
     }
-    return '/default-avatar.svg';
+    return null;
   };
 
   const avatarUrl = getAvatarUrl();
@@ -142,7 +145,7 @@ export default function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed
                 className="cursor-pointer flex items-center justify-center"
                 onClick={() => router.push('/home')}
               >
-                <FitClashLogo size="md" />
+                <ChallngrLogo size="md" />
               </div>
               <p className="text-gray-400 text-sm text-center mt-2">
                 Where Fitness Meets Competition
@@ -237,7 +240,7 @@ export default function Sidebar({ isOpen, setIsOpen, isCollapsed, setIsCollapsed
         {!isCollapsed && (
           <div className="p-4 border-t border-gray-700 flex-shrink-0">
             <div className="text-center text-gray-500 text-xs">
-              <div>FitClash v1.0</div>
+              <div>challngr v1.0</div>
               <div className="mt-1">Ready to compete? 💪</div>
             </div>
           </div>

@@ -1,11 +1,12 @@
-import { pb } from '@/lib/pocketbase';
-import type {Competition, CompetitionParticipant } from '@/types/database.types';
+import { createBrowserClient } from '@/lib/supabase';
+import type { Competition, CompetitionParticipant, Profile } from '@/types/supabase.types';
 
 export interface StandingWithUser extends CompetitionParticipant {
+  profile?: Profile;
   expand?: {
     user_id: {
       id: string;
-      name: string;
+      name?: string;
       email: string;
       first_name?: string;
       last_name?: string;
@@ -14,10 +15,11 @@ export interface StandingWithUser extends CompetitionParticipant {
 }
 
 export interface ParticipantWithUser extends CompetitionParticipant {
+  profile?: Profile;
   expand?: {
     user_id: {
       id: string;
-      name: string;
+      name?: string;
       email: string;
       first_name?: string;
       last_name?: string;
@@ -31,33 +33,124 @@ export const standingsService = {
    */
   async getCurrentStandings(competitionId: string): Promise<StandingWithUser[]> {
     try {
-      const standings = await pb.collection('competition_participants').getFullList<StandingWithUser>({
-        filter: `competition_id = "${competitionId}" && is_active = true`,
-        sort: 'rank',
-        expand: 'user_id'
-      });
+      const supabase = createBrowserClient();
+      
+      console.log('Fetching standings for competition:', competitionId);
+      
+      // First, let's check if the user is authenticated
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      console.log('Current user:', user?.id, 'Auth error:', authError);
+      
+      // Simple query first to test basic connectivity
+      const { data: standings, error } = await supabase
+        .from('competition_participants')
+        .select('*')
+        .eq('competition_id', competitionId)
+        .eq('is_active', true);
 
-      return standings;
+      console.log('Raw query result:', { standings, error });
+
+      if (error) {
+        console.error('Supabase error in getCurrentStandings:', error);
+        throw error;
+      }
+
+      if (!standings || standings.length === 0) {
+        console.warn('No standings data returned for competition:', competitionId);
+        return [];
+      }
+
+      // Now try to get profiles
+      const userIds = standings.map(s => s.user_id);
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name, avatar')
+        .in('id', userIds);
+
+      console.log('Profiles query result:', { profiles, profilesError });
+
+      // Map the data together
+      return standings.map(standing => {
+        const profile = profiles?.find(p => p.id === standing.user_id);
+        return {
+          ...standing,
+          profile,
+          expand: {
+            user_id: {
+              id: profile?.id || '',
+              first_name: profile?.first_name,
+              last_name: profile?.last_name,
+              email: '',
+            }
+          }
+        };
+      }).sort((a, b) => {
+        // Sort by rank (nulls last), then by weight_change_percentage (descending)
+        if (a.rank && b.rank) return a.rank - b.rank;
+        if (a.rank && !b.rank) return -1;
+        if (!a.rank && b.rank) return 1;
+        return (b.weight_change_percentage || 0) - (a.weight_change_percentage || 0);
+      });
     } catch (error) {
       console.error('Error fetching current standings:', error);
       return [];
     }
   },
 
-
-
   /**
    * Get standings for a specific user across all competitions
    */
   async getUserStandings(userId: string): Promise<StandingWithUser[]> {
     try {
-      const standings = await pb.collection('competition_participants').getFullList<StandingWithUser>({
-        filter: `user_id = "${userId}" && is_active = true`,
-        sort: 'rank',
-        expand: 'competition_id'
-      });
+      const supabase = createBrowserClient();
+      
+      const { data: standings, error } = await supabase
+        .from('competition_participants')
+        .select(`
+          *,
+          profiles:user_id (
+            id,
+            first_name,
+            last_name,
+            avatar
+          ),
+          competitions (
+            id,
+            name,
+            status,
+            start_date,
+            end_date
+          )
+        `)
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        .order('rank', { ascending: true, nullsFirst: false });
 
-      return standings;
+      if (error) {
+        console.error('Supabase error in getUserStandings:', error);
+        throw error;
+      }
+
+      if (!standings) {
+        console.warn('No user standings data returned for user:', userId);
+        return [];
+      }
+
+      return standings.map(standing => {
+        const profile = (standing as any).profiles;
+        return {
+          ...standing,
+          profile,
+          expand: {
+            user_id: {
+              id: profile?.id || '',
+              first_name: profile?.first_name,
+              last_name: profile?.last_name,
+              email: profile?.email || '',
+            }
+          }
+        };
+      });
     } catch (error) {
       console.error('Error fetching user standings:', error);
       return [];
@@ -69,13 +162,48 @@ export const standingsService = {
    */
   async getParticipantsAsStandings(competitionId: string): Promise<ParticipantWithUser[]> {
     try {
-      const participants = await pb.collection('competition_participants').getFullList<ParticipantWithUser>({
-        filter: `competition_id = "${competitionId}" && is_active = true`,
-        sort: '-weight_change_percentage', // Sort by best performance
-        expand: 'user_id'
-      });
+      const supabase = createBrowserClient();
+      
+      const { data: participants, error } = await supabase
+        .from('competition_participants')
+        .select(`
+          *,
+          profiles:user_id (
+            id,
+            first_name,
+            last_name,
+            avatar
+          )
+        `)
+        .eq('competition_id', competitionId)
+        .eq('is_active', true)
+        .order('weight_change_percentage', { ascending: false, nullsFirst: false });
 
-      return participants;
+      if (error) {
+        console.error('Supabase error in getParticipantsAsStandings:', error);
+        throw error;
+      }
+
+      if (!participants) {
+        console.warn('No participants data returned for competition:', competitionId);
+        return [];
+      }
+
+      return participants.map(participant => {
+        const profile = (participant as any).profiles;
+        return {
+          ...participant,
+          profile,
+          expand: {
+            user_id: {
+              id: profile?.id || '',
+              first_name: profile?.first_name,
+              last_name: profile?.last_name,
+              email: profile?.email || '',
+            }
+          }
+        };
+      });
     } catch (error) {
       console.error('Error fetching participants:', error);
       return [];
@@ -87,15 +215,15 @@ export const standingsService = {
    */
   async triggerStandingsRecalculation(competitionId: string): Promise<boolean> {
     try {
-      // Create a dummy weight entry update to trigger recalculation
-      // This is a workaround since we can't directly call PocketBase hooks from frontend
-      const competition = await pb.collection('competitions').getOne(competitionId);
+      const supabase = createBrowserClient();
       
-      // Update the competition's updated timestamp to trigger any related hooks
-      await pb.collection('competitions').update(competitionId, {
-        updated: new Date().toISOString()
-      });
+      // Update the competition's updated_at timestamp to trigger any related database functions
+      const { error } = await supabase
+        .from('competitions')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', competitionId);
 
+      if (error) throw error;
       return true;
     } catch (error) {
       console.error('Error triggering standings recalculation:', error);
@@ -108,10 +236,19 @@ export const standingsService = {
    */
   async getLeaderboard(competitionId: string) {
     try {
-      const [standings, competition] = await Promise.all([
+      const supabase = createBrowserClient();
+      
+      const [standings, competitionResult] = await Promise.all([
         this.getCurrentStandings(competitionId),
-        pb.collection('competitions').getOne<Competition>(competitionId)
+        supabase
+          .from('competitions')
+          .select('*')
+          .eq('id', competitionId)
+          .single()
       ]);
+
+      if (competitionResult.error) throw competitionResult.error;
+      const competition = competitionResult.data;
 
       // If no standings exist, fall back to participants
       if (standings.length === 0) {
@@ -144,11 +281,18 @@ export const standingsService = {
    */
   async getUserRank(competitionId: string, userId: string): Promise<number | undefined> {
     try {
-      const standing = await pb.collection('competition_participants').getFirstListItem<CompetitionParticipant>(
-        `competition_id = "${competitionId}" && user_id = "${userId}" && is_active = true`
-      );
+      const supabase = createBrowserClient();
+      
+      const { data: standing, error } = await supabase
+        .from('competition_participants')
+        .select('rank')
+        .eq('competition_id', competitionId)
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        .single();
 
-      return standing.rank;
+      if (error) throw error;
+      return standing?.rank;
     } catch (error) {
       // If no standing found, try to get from participants
       try {

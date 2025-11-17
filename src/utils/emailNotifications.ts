@@ -38,14 +38,14 @@ export async function sendEmailNotification({
 
     console.log(`📧 Triggering email workflow: ${workflowId} for subscriber: ${subscriberId}`);
 
-    const response = await fetch('https://api.novu.co/v2/events/trigger', {
+    const response = await fetch('https://api.novu.co/v1/events/trigger', {
       method: 'POST',
       headers: {
         'Authorization': `ApiKey ${novuApiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        workflowId,
+        name: workflowId,
         to: {
           subscriberId,
         },
@@ -209,6 +209,61 @@ export const EmailNotifications = {
         totalWeightChange: data.totalWeightChange,
         entriesLogged: data.entriesLogged,
         competitionsActive: data.competitionsActive
+      }
+    });
+  },
+
+  /**
+   * Send push notification for new competition message
+   */
+  async newCompetitionMessage(
+    userId: string,
+    data: {
+      senderName: string;
+      competitionName: string;
+      messageText: string;
+      competitionId: string;
+      messageId: string;
+    }
+  ) {
+    return sendEmailNotification({
+      workflowId: 'new-competition-message',
+      subscriberId: userId,
+      payload: {
+        senderName: data.senderName,
+        competitionName: data.competitionName,
+        messageText: data.messageText.length > 100 ? data.messageText.substring(0, 97) + '...' : data.messageText,
+        competitionId: data.competitionId,
+        messageId: data.messageId,
+        actionUrl: `/competition/${data.competitionId}/chat`,
+        timestamp: new Date().toISOString()
+      }
+    });
+  },
+
+  /**
+   * Send daily competition reminder
+   */
+  async dailyCompetitionReminder(
+    userId: string,
+    data: {
+      userName: string;
+      competitionName: string;
+      competitionId: string;
+      daysRemaining: number;
+    }
+  ) {
+    return sendEmailNotification({
+      workflowId: 'daily-competition-reminder',
+      subscriberId: userId,
+      payload: {
+        userName: data.userName,
+        competitionName: data.competitionName,
+        competitionId: data.competitionId,
+        daysRemaining: data.daysRemaining,
+        actionUrl: `/competition/${data.competitionId}`,
+        today: new Date().toLocaleDateString(),
+        timestamp: new Date().toISOString()
       }
     });
   },

@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { createBrowserClient } from '@/lib/supabase';
 import { standingsService, type StandingWithUser } from '@/utils/standingsService';
-import type { Competition, Prize } from '@/types/database.types';
-import LoadingSpinner from './LoadingSpinner';
-import { pb } from '@/lib/pocketbase';
+import type { Competition } from '@/types/supabase.types';
+import { LeaderboardSkeleton } from './skeletons';
 
 interface LeaderboardCardProps {
   competitionId: string;
@@ -24,7 +24,6 @@ export default function LeaderboardCard({
   maxEntries = 5 
 }: LeaderboardCardProps) {
   const [leaderboard, setLeaderboard] = useState<LeaderboardData | null>(null);
-  const [prizes, setPrizes] = useState<Prize[]>([]);
   const [participantCount, setParticipantCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,21 +32,19 @@ export default function LeaderboardCard({
     async function fetchLeaderboard() {
       try {
         setError(null);
+        const supabase = createBrowserClient();
+        
         const data = await standingsService.getLeaderboard(competitionId);
         setLeaderboard(data);
         
-        // Fetch prizes for this competition
-        const prizesData = await pb.collection('prizes').getFullList({
-          filter: `competition_id = "${competitionId}"`,
-          sort: 'rank'
-        });
-        setPrizes(prizesData as Prize[]);
-        
         // Fetch participant count
-        const participants = await pb.collection('competition_participants').getFullList({
-          filter: `competition_id = "${competitionId}"`
-        });
-        setParticipantCount(participants.length);
+        const { data: participants, error: participantsError } = await supabase
+          .from('competition_participants')
+          .select('id')
+          .eq('competition_id', competitionId);
+
+        if (participantsError) throw participantsError;
+        setParticipantCount(participants?.length || 0);
       } catch (err) {
         console.error('Error fetching leaderboard:', err);
         setError('Failed to load leaderboard');
@@ -130,14 +127,9 @@ export default function LeaderboardCard({
     return isPositive ? 'text-green-600 dark:text-green-500' : 'text-red-600 dark:text-red-500';
   };
 
-  // Calculate prize amount based on entry fee, participants, and percentage
-  const calculatePrizeAmount = (percentage: number): number => {
-    if (!leaderboard?.competition.entry_fee) return 0;
-    const prizePool = leaderboard.competition.entry_fee * participantCount;
-    return (prizePool * percentage) / 100;
-  };
-
-  if (loading) return <LoadingSpinner />;
+  if (loading) {
+    return <LeaderboardSkeleton showPodium={true} participantCount={maxEntries} />;
+  }
   
   if (error) {
     return (
@@ -188,17 +180,6 @@ export default function LeaderboardCard({
           {getCompetitionTypeLabel(competitionType)}
         </h3>
         <div className="flex items-center gap-4">
-          {leaderboard.competition.entry_fee && leaderboard.competition.entry_fee > 0 && (
-            <div className="text-sm">
-              <span className="text-muted-foreground">Prize Pool: </span>
-              <span className="font-bold text-green-600 dark:text-green-500">
-                ${(leaderboard.competition.entry_fee * participantCount).toFixed(2)}
-              </span>
-              <span className="text-muted-foreground ml-1">
-                ({participantCount} × ${leaderboard.competition.entry_fee})
-              </span>
-            </div>
-          )}
           {!leaderboard.isCalculated && (
             <span className="text-xs text-amber-600 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400 px-2 py-1 rounded">
               Live Calculation
@@ -229,9 +210,6 @@ export default function LeaderboardCard({
                   const weightChange = standing.weight_change || 0;
                   const percentage = standing.weight_change_percentage || 0;
                   
-                  // Find prize for this rank
-                  const prize = prizes.find(p => p.rank === standing.rank);
-                  
                   const heightClass = standing.rank === 1 ? 'h-56 md:h-64' : standing.rank === 2 ? 'h-48 md:h-56' : 'h-40 md:h-48';
                   const trophySize = standing.rank === 1 ? 'text-4xl md:text-6xl' : 'text-3xl md:text-5xl';
                   
@@ -256,33 +234,6 @@ export default function LeaderboardCard({
                           <div className="font-bold text-foreground text-xs md:text-sm mb-2 md:mb-3 line-clamp-2 px-1">
                             {displayName}
                           </div>
-                          
-                          {/* Prize */}
-                          {prize && (
-                            <div className="mb-2 md:mb-3 pb-2 md:pb-3 border-b border-border/50">
-                              {prize.currency === 'PERCENT' ? (
-                                <>
-                                  <div className="text-sm md:text-lg font-bold text-green-600 dark:text-green-500">
-                                    ${calculatePrizeAmount(prize.value || 0).toFixed(0)}
-                                  </div>
-                                  <div className="text-[10px] md:text-xs text-muted-foreground mt-1 hidden md:block">
-                                    {prize.value}% of pool
-                                  </div>
-                                </>
-                              ) : (
-                                <>
-                                  <div className="text-sm md:text-lg font-bold text-green-600 dark:text-green-500">
-                                    {prize.value ? `$${prize.value.toLocaleString()}` : 'TBD'}
-                                  </div>
-                                  {prize.description && (
-                                    <div className="text-[10px] md:text-xs text-muted-foreground mt-1 line-clamp-2 hidden md:block">
-                                      {prize.description}
-                                    </div>
-                                  )}
-                                </>
-                              )}
-                            </div>
-                          )}
                         </div>
                         
                         <div className="text-center space-y-1 md:space-y-2">

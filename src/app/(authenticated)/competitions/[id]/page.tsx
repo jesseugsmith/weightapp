@@ -2,53 +2,66 @@
 
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
-import { pb } from '@/lib/pocketbase';
-import { Competition, Prize } from '@/types/database.types';
-import { isAdmin as checkIsAdmin } from '@/utils/permissions';
+import { createBrowserClient } from '@/lib/supabase';
+import { Competition, Prize } from '@/types/supabase.types';
+import { usePermissions } from '@/contexts/PermissionsContext';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { useAuth } from '@/hooks/useAuth';
 import LeaderboardCard from '@/components/LeaderboardCard';
-import { competitionService} from '@/utils/dataService';
 import EditCompetitionModal from '@/components/EditCompetitionModal';
+import CompetitionMessagingBoard from '@/components/CompetitionMessagingBoard';
+import { MessageCircle, Trophy } from 'lucide-react';
 
 export default function CompetitionDetails() {
   const params = useParams();
   const { user } = useAuth();
+  const { hasPermission } = usePermissions();
   const [competition, setCompetition] = useState<Competition | null>(null);
   const [prizes, setPrizes] = useState<Prize[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
   const [sending, setSending] = useState(false);
   const [startingCompetition, setStartingCompetition] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [participantCount, setParticipantCount] = useState(0);
+  const [activeTab, setActiveTab] = useState<'leaderboard' | 'chat'>('leaderboard');
+
+  const isAdmin = hasPermission('manage_competitions');
 
   useEffect(() => {
-    async function checkAdminStatus() {
-      const adminStatus = await checkIsAdmin();
-      setIsAdmin(adminStatus);
-    }
-
     async function fetchCompetitionDetails() {
       try {
+        const supabase = createBrowserClient();
+
         // Fetch competition details
-        const competitionData = await pb.collection('competitions').getOne(params.id as string);
-        setCompetition(competitionData as Competition);
+        const { data: competitionData, error: compError } = await supabase
+          .from('competitions')
+          .select('*')
+          .eq('id', params.id as string)
+          .single();
+
+        if (compError) throw compError;
+        setCompetition(competitionData);
 
         // Fetch prizes for this competition
-        const prizesData = await pb.collection('prizes').getFullList({
-          filter: `competition_id = "${params.id}"`,
-          sort: 'rank'
-        });
-        setPrizes(prizesData as Prize[]);
+        const { data: prizesData, error: prizesError } = await supabase
+          .from('prizes')
+          .select('*')
+          .eq('competition_id', params.id as string)
+          .order('rank', { ascending: true });
+
+        if (prizesError) throw prizesError;
+        setPrizes(prizesData || []);
 
         // Fetch participant count
-        const participants = await pb.collection('competition_participants').getFullList({
-          filter: `competition_id = "${params.id}"`
-        });
-        setParticipantCount(participants.length);
+        const { data: participants, error: participantsError } = await supabase
+          .from('competition_participants')
+          .select('id')
+          .eq('competition_id', params.id as string);
+
+        if (participantsError) throw participantsError;
+        setParticipantCount(participants?.length || 0);
 
       } catch (err) {
         console.error('Error fetching competition details:', err);
@@ -59,10 +72,9 @@ export default function CompetitionDetails() {
     }
 
     if (params.id) {
-      checkAdminStatus();
       fetchCompetitionDetails();
     }
-  }, [params.id]);
+  }, [params.id, hasPermission]);
 
   const handleStartCompetition = async () => {
     if (!competition || !user) return;
@@ -72,12 +84,17 @@ export default function CompetitionDetails() {
     setSuccess(null);
     
     try {
+      const supabase = createBrowserClient();
+      
       // Update competition status to 'started'
-      const comp = await competitionService.startCompetition(competition.id);
-      if (!comp) {
-        throw new Error('Failed to start competition');
-      }
-      //setCompetition(updatedCompetition as Competition);
+      const { error: updateError } = await supabase
+        .from('competitions')
+        .update({ status: 'started' })
+        .eq('id', competition.id);
+
+      if (updateError) throw updateError;
+
+      setCompetition({ ...competition, status: 'started' });
       setSuccess('Competition started successfully! Participants can now begin logging their progress.');
       
     } catch (err) {
@@ -96,20 +113,15 @@ export default function CompetitionDetails() {
     setSuccess(null);
     
     try {
-      // Note: This functionality would need to be reimplemented with PocketBase
-      // Since PocketBase doesn't have edge functions like Supabase, you would need to:
-      // 1. Create a separate API endpoint in your Next.js app
-      // 2. Or use a service like Resend/SendGrid directly from the client
-      // 3. Or implement this server-side functionality differently
-      
-      setError('Competition email functionality not yet implemented with PocketBase');
-      
-      // Placeholder for future implementation:
+      // TODO: Implement competition email functionality
+      // This would require creating an API endpoint to send competition details via email
       // const response = await fetch('/api/send-competition-details', {
       //   method: 'POST',
       //   headers: { 'Content-Type': 'application/json' },
       //   body: JSON.stringify({ competition_id: competition.id }),
       // });
+      
+      setError('Competition email functionality not yet implemented');
       
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send competition details');
@@ -124,20 +136,34 @@ export default function CompetitionDetails() {
     setError(null);
     
     try {
-      const competitionData = await pb.collection('competitions').getOne(params.id as string);
-      setCompetition(competitionData as Competition);
+      const supabase = createBrowserClient();
 
-      const prizesData = await pb.collection('prizes').getFullList({
-        filter: `competition_id = "${params.id}"`,
-        sort: 'rank'
-      });
-      setPrizes(prizesData as Prize[]);
+      const { data: competitionData, error: compError } = await supabase
+        .from('competitions')
+        .select('*')
+        .eq('id', params.id as string)
+        .single();
+
+      if (compError) throw compError;
+      setCompetition(competitionData);
+
+      const { data: prizesData, error: prizesError } = await supabase
+        .from('prizes')
+        .select('*')
+        .eq('competition_id', params.id as string)
+        .order('rank', { ascending: true });
+
+      if (prizesError) throw prizesError;
+      setPrizes(prizesData || []);
 
       // Refresh participant count
-      const participants = await pb.collection('competition_participants').getFullList({
-        filter: `competition_id = "${params.id}"`
-      });
-      setParticipantCount(participants.length);
+      const { data: participants, error: participantsError } = await supabase
+        .from('competition_participants')
+        .select('id')
+        .eq('competition_id', params.id as string);
+
+      if (participantsError) throw participantsError;
+      setParticipantCount(participants?.length || 0);
 
       setSuccess('Competition updated successfully!');
       setTimeout(() => setSuccess(null), 3000);
@@ -230,7 +256,13 @@ export default function CompetitionDetails() {
                   <>
                     <button
                       onClick={() => setIsEditModalOpen(true)}
-                      className="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700"
+                      disabled={competition.status === 'started'}
+                      className={`inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-md ${
+                        competition.status === 'started'
+                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                          : 'bg-blue-600 text-white hover:bg-blue-700'
+                      }`}
+                      title={competition.status === 'started' ? 'Cannot edit active competitions' : 'Edit competition'}
                     >
                       Edit Competition
                     </button>
@@ -331,11 +363,51 @@ export default function CompetitionDetails() {
 
       {/* Leaderboard */}
       <div className="mb-6 w-full">
-        <h2 className="text-xl font-bold text-foreground mb-3 max-w-7xl mx-auto">Current Standings</h2>
-        <LeaderboardCard 
-          competitionId={competition.id}
-          isEnded={competition.status === 'completed'}
-        />
+        <div className="max-w-7xl mx-auto">
+          {/* Tab Navigation */}
+          <div className="flex border-b border-gray-200 mb-6">
+            <button
+              onClick={() => setActiveTab('leaderboard')}
+              className={`flex items-center gap-2 px-6 py-3 font-medium text-sm border-b-2 transition-colors ${
+                activeTab === 'leaderboard'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Trophy className="w-4 h-4" />
+              Leaderboard
+            </button>
+            <button
+              onClick={() => setActiveTab('chat')}
+              className={`flex items-center gap-2 px-6 py-3 font-medium text-sm border-b-2 transition-colors ${
+                activeTab === 'chat'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <MessageCircle className="w-4 h-4" />
+              Chat
+            </button>
+          </div>
+
+          {/* Tab Content */}
+          {activeTab === 'leaderboard' ? (
+            <div>
+              <h2 className="text-xl font-bold text-foreground mb-3">Current Standings</h2>
+              <LeaderboardCard 
+                competitionId={competition.id}
+                isEnded={competition.status === 'completed'}
+              />
+            </div>
+          ) : (
+            <div className="bg-white rounded-lg border border-gray-200 shadow-sm" style={{ height: '600px' }}>
+              <CompetitionMessagingBoard
+                competitionId={competition.id}
+                competitionName={competition.name}
+              />
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Edit Competition Modal */}

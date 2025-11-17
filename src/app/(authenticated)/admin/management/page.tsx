@@ -2,15 +2,24 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { pb } from '@/lib/pocketbase';
-import { usePermissions } from '@/contexts/PermissionContext';
+import { createBrowserClient } from '@/lib/supabase';
+import { usePermissions } from '@/contexts/PermissionsContext';
 
 import LoadingSpinner from '@/components/LoadingSpinner';
-import type { AdminRole, User } from '@/types/database.types';
+import type { UserRole, Role } from '@/types/supabase.types';
 
-interface AdminUser extends AdminRole {
-  expand?: {
-    user_id?: User;
+interface AdminUser {
+  id: string;
+  user_id: string;
+  role_id: string;
+  assigned_by: string | null;
+  assigned_at: string;
+  expires_at: string | null;
+  role?: Role;
+  profile?: {
+    id: string;
+    first_name: string | null;
+    last_name: string | null;
   };
 }
 
@@ -33,10 +42,57 @@ export default function AdminManagement() {
 
   const fetchAdmins = async () => {
     try {
-      const adminRoles = await pb.collection('admin_roles').getFullList({
-        expand: 'user_id'
-      });
-      setAdmins(adminRoles as AdminUser[]);
+      const supabase = createBrowserClient();
+      
+      // First get admin and super_admin roles
+      const { data: roles, error: rolesError } = await supabase
+        .from('roles')
+        .select('id, name')
+        .in('name', ['admin', 'super_admin']);
+      
+      if (rolesError) throw rolesError;
+      
+      const roleIds = roles?.map(r => r.id) || [];
+      
+      // Then get all user_roles with those role_ids
+      const { data: userRoles, error: userRolesError } = await supabase
+        .from('user_roles')
+        .select(`
+          *,
+          roles!inner(id, name, description, is_system, created_at, updated_at)
+        `)
+        .in('role_id', roleIds)
+        .is('expires_at', null); // Only non-expired roles
+      
+      if (userRolesError) throw userRolesError;
+      
+      // Fetch profiles separately for each user_id
+      const userIds = userRoles?.map(ur => ur.user_id) || [];
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name')
+        .in('id', userIds);
+      
+      if (profilesError) {
+        console.error('Error fetching profiles:', profilesError);
+      }
+      
+      // Create a map of profiles by user_id
+      const profileMap = new Map(profiles?.map(p => [p.id, p]) || []);
+      
+      // Transform the data to match AdminUser interface
+      const transformedAdmins = userRoles?.map((ur: any) => ({
+        id: ur.id,
+        user_id: ur.user_id,
+        role_id: ur.role_id,
+        assigned_by: ur.assigned_by,
+        assigned_at: ur.assigned_at,
+        expires_at: ur.expires_at,
+        role: Array.isArray(ur.roles) ? ur.roles[0] : ur.roles,
+        profile: profileMap.get(ur.user_id),
+      })) || [];
+      
+      setAdmins(transformedAdmins);
     } catch (error) {
       console.error('Error fetching admins:', error);
       setError('Failed to fetch admin list');
@@ -51,24 +107,64 @@ export default function AdminManagement() {
     setSuccess('');
 
     try {
-      // First, get the user ID from the email
-      const users = await pb.collection('users').getFullList({
-        filter: `email = "${newAdminEmail}"`
-      });
+      const supabase = createBrowserClient();
 
-      if (users.length === 0) {
-        setError('User not found with this email');
+      // First, find the user by searching profiles
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('id')
+        .ilike('first_name', `%${newAdminEmail}%`)
+        .or(`last_name.ilike.%${newAdminEmail}%`)
+        .single();
+      
+      let userId = profile?.id;
+      
+      // If not found by name, try to find by user ID directly
+      if (!userId) {
+        // Assume they entered a user ID
+        userId = newAdminEmail;
+      }
+
+      if (!userId) {
+        setError('User not found');
         return;
       }
 
-      const userId = users[0].id;
+      // Get the admin role ID
+      const { data: adminRole, error: roleError } = await supabase
+        .from('roles')
+        .select('id')
+        .eq('name', 'admin')
+        .single();
+
+      if (roleError || !adminRole) {
+        setError('Admin role not found in database');
+        return;
+      }
+
+      // Check if user already has this role
+      const { data: existing } = await supabase
+        .from('user_roles')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('role_id', adminRole.id)
+        .single();
+
+      if (existing) {
+        setError('User already has admin role');
+        return;
+      }
 
       // Add the admin role
-      await pb.collection('admin_roles').create({
-        user_id: userId,
-        role: 'admin',
-        assigned_by: user?.id
-      });
+      const { error: insertError } = await supabase
+        .from('user_roles')
+        .insert([{
+          user_id: userId,
+          role_id: adminRole.id,
+          assigned_by: user?.id
+        }]);
+
+      if (insertError) throw insertError;
 
       setSuccess('Admin role added successfully');
       setNewAdminEmail('');
@@ -79,9 +175,15 @@ export default function AdminManagement() {
     }
   };
 
-  const handleRemoveAdmin = async (adminId: string) => {
+  const handleRemoveAdmin = async (userRoleId: string) => {
     try {
-      await pb.collection('admin_roles').delete(adminId);
+      const supabase = createBrowserClient();
+      const { error } = await supabase
+        .from('user_roles')
+        .delete()
+        .eq('id', userRoleId);
+
+      if (error) throw error;
 
       setSuccess('Admin role removed successfully');
       fetchAdmins();
@@ -135,11 +237,11 @@ export default function AdminManagement() {
             <form onSubmit={handleAddAdmin} className="mt-5">
               <div className="flex gap-4">
                 <input
-                  type="email"
+                  type="text"
                   required
                   value={newAdminEmail}
                   onChange={(e) => setNewAdminEmail(e.target.value)}
-                  placeholder="Enter email address"
+                  placeholder="Enter user ID or name"
                   className="flex-1 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
                 />
                 <button
@@ -178,10 +280,10 @@ export default function AdminManagement() {
                     {admins.map((admin) => (
                       <tr key={admin.id}>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {admin.expand?.user_id?.email}
+                          {admin.profile?.first_name} {admin.profile?.last_name}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {admin.role === 'super_admin' ? (
+                          {admin.role?.name === 'super_admin' ? (
                             <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">
                               Super Admin
                             </span>
@@ -192,10 +294,10 @@ export default function AdminManagement() {
                           )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {new Date(admin.created_at).toLocaleDateString()}
+                          {new Date(admin.assigned_at).toLocaleDateString()}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                          {admin.role === 'admin' && (
+                          {admin.role?.name === 'admin' && (
                             <button
                               onClick={() => handleRemoveAdmin(admin.id)}
                               className="text-red-600 hover:text-red-900"
