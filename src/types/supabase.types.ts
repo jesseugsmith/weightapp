@@ -6,7 +6,9 @@ export interface Profile {
   id: string; // This is the primary key and references auth.users(id)
   first_name: string | null;
   last_name: string | null;
+  nickname: string | null;
   avatar: string | null;
+  photo_url: string | null;
   phone: string | null;
   date_of_birth: string | null;
   gender: string | null;
@@ -14,6 +16,12 @@ export interface Profile {
   bio: string | null;
   timezone: string | null;
   weight_unit: string | null;
+  profile_visibility: 'public' | 'friends' | 'private' | null;
+  show_in_leaderboards: boolean | null;
+  allow_friend_requests: boolean | null;
+  show_activity_status: boolean | null;
+  theme: 'light' | 'dark' | 'system' | null;
+  language: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -28,6 +36,20 @@ export interface WeightEntry {
   updated_at: string;
 }
 
+export interface ActivityEntry {
+  id: string;
+  user_id: string;
+  activity_type: 'weight' | 'steps' | 'body_fat' | 'muscle_mass' | 'distance' | 'calories';
+  value: number;
+  unit: string | null;
+  notes: string | null;
+  image_url: string | null;
+  date: string;
+  created_at: string;
+  updated_at: string;
+  metadata: Record<string, any> | null;
+}
+
 export interface Competition {
   id: string;
   name: string;
@@ -39,6 +61,7 @@ export interface Competition {
   competition_type: 'weight_loss' | 'weight_gain' | 'body_fat_loss' | 'muscle_gain' | null;
   max_participants: number | null;
   entry_fee: number | null;
+  days_left?: number; // Calculated field from DB view/function, not stored
   created_at: string;
   updated_at: string;
 }
@@ -152,6 +175,11 @@ export interface Database {
         Insert: Omit<WeightEntry, 'id' | 'created_at' | 'updated_at'>;
         Update: Partial<Omit<WeightEntry, 'id' | 'created_at'>>;
       };
+      activity_entries: {
+        Row: ActivityEntry;
+        Insert: Omit<ActivityEntry, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<ActivityEntry, 'id' | 'created_at'>>;
+      };
       competitions: {
         Row: Competition;
         Insert: Omit<Competition, 'id' | 'created_at' | 'updated_at'>;
@@ -213,6 +241,10 @@ export interface ProfileWithUser extends Profile {
   };
 }
 
+export interface ActivityEntryWithProfile extends ActivityEntry {
+  profile?: Profile;
+}
+
 export interface WeightEntryWithProfile extends WeightEntry {
   profile?: Profile;
 }
@@ -237,4 +269,6 @@ export interface UserRoleWithRole extends UserRole {
 // Helper types for forms
 export type ProfileUpdate = Partial<Omit<Profile, 'id' | 'user_id' | 'created_at' | 'updated_at'>>;
 export type WeightEntryCreate = Omit<WeightEntry, 'id' | 'created_at' | 'updated_at'>;
+export type ActivityEntryCreate = Omit<ActivityEntry, 'id' | 'created_at' | 'updated_at'>;
+export type ActivityEntryUpdate = Partial<Omit<ActivityEntry, 'id' | 'user_id' | 'created_at' | 'updated_at'>>;
 export type CompetitionCreate = Omit<Competition, 'id' | 'created_at' | 'updated_at' | 'created_by'>;

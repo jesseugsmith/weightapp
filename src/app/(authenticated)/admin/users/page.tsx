@@ -158,8 +158,21 @@ export default function UserManagement() {
     try {
       const supabase = createBrowserClient();
 
-      // Fetch all users from auth.users via admin API or profiles
-      const { data: { users: authUsers }, error: usersError } = await supabase.auth.admin.listUsers();
+      let authUsers: any[] = [];
+      let usersError: any = null;
+
+      // Try to fetch from auth.users (requires service role permissions)
+      try {
+        const { data: { users }, error } = await supabase.auth.admin.listUsers();
+        if (!error && users) {
+          authUsers = users;
+        } else {
+          usersError = error;
+        }
+      } catch (adminError) {
+        console.log('Admin API not available, using profiles fallback:', adminError);
+        usersError = adminError;
+      }
       
       if (usersError) {
         console.error('Error fetching auth users:', usersError);

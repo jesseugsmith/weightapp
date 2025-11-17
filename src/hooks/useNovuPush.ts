@@ -19,7 +19,10 @@ export function useNovuPush() {
     
     // Prevent duplicate registrations in the same session
     if (registeredUsers.has(user.id) || hasAttemptedRegistration.current) {
-      console.log('Push notifications already registered for user:', user.id);
+      // Reduce console noise - only log once per session
+      if (!registeredUsers.has(user.id)) {
+        console.log('Push notifications already registered for user:', user.id);
+      }
       return;
     }
     
@@ -161,14 +164,16 @@ async function registerSubscriberWithNovu(user: any) {
     }
 
     // Register subscriber via server-side API (secure)
-    console.log('🚀 Calling /api/novu/register-subscriber with:', {
+    const subscriberApiUrl = '/api/novu/register-subscriber';
+    console.log('🚀 Calling API:', subscriberApiUrl);
+    console.log('📤 Request payload:', {
       subscriberId: user.id,
       email: user.email,
       firstName: firstName,
       lastName: lastName,
     });
 
-    const subscriberResponse = await fetch('/api/novu/register-subscriber', {
+    const subscriberResponse = await fetch(subscriberApiUrl, {
       method: 'POST',
       credentials: 'include',
       headers: {
@@ -211,10 +216,12 @@ async function registerPushCredentials(
     // Convert subscription to JSON
     const subscriptionJSON = subscription.toJSON();
     
+    const pushApiUrl = '/api/novu/register-push';
     console.log('Registering push credentials for subscriber:', userId);
+    console.log('🌐 Calling API:', pushApiUrl);
 
     // Use server-side API endpoint for secure registration
-    const response = await fetch('/api/novu/register-push', {
+    const response = await fetch(pushApiUrl, {
       method: 'POST',
       credentials: 'include', // Ensure cookies are sent for authentication
       headers: {

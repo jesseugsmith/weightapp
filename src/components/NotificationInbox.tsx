@@ -1,8 +1,13 @@
 'use client';
 
 import { Inbox } from '@novu/nextjs';
+import React from 'react';
 
-export default function NotificationInbox({ subscriberId }: { subscriberId: string }) {
+interface NotificationInboxProps {
+  subscriberId: string;
+}
+
+function NotificationInbox({ subscriberId }: NotificationInboxProps) {
   const applicationIdentifier = process.env.NEXT_PUBLIC_NOVU_APPLICATION_IDENTIFIER;
 
   if (!applicationIdentifier) {
@@ -16,7 +21,10 @@ export default function NotificationInbox({ subscriberId }: { subscriberId: stri
     );
   }
 
-  console.log('NotificationInbox rendering with:', { subscriberId, applicationIdentifier });
+  // Only render if we have a valid subscriberId
+  if (!subscriberId || subscriberId === 'guest-user') {
+    return null;
+  }
 
   return (
     <Inbox
@@ -45,3 +53,6 @@ export default function NotificationInbox({ subscriberId }: { subscriberId: stri
     />
   );
 }
+
+// Memoize the component to prevent unnecessary re-renders
+export default React.memo(NotificationInbox);

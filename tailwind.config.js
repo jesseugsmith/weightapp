@@ -20,7 +20,16 @@ module.exports = {
           primary: '#ffffff',
           secondary: '#a0aec0'
         }
-      }
+      },
+      keyframes: {
+        shimmer: {
+          '0%': { backgroundPosition: '200% 0' },
+          '100%': { backgroundPosition: '-200% 0' },
+        },
+      },
+      animation: {
+        shimmer: 'shimmer 2s ease-in-out infinite',
+      },
     },
   },
   plugins: [],

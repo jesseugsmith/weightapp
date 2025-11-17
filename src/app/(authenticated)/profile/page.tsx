@@ -26,8 +26,8 @@ function formatDateForInput(dateString: string): string {
   }
 }
 
-// Helper function to validate and format date for PocketBase
-function formatDateForPocketBase(dateString: string): string | null {
+// Helper function to validate and format date for database
+function formatDateForDatabase(dateString: string): string | null {
   if (!dateString) return null;
   
   // Validate YYYY-MM-DD format

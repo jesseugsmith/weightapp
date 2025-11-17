@@ -6,10 +6,12 @@ import { createBrowserClient } from '@/lib/supabase';
 import type { Profile, CompetitionParticipant, Competition } from '@/types/supabase.types';
 
 import LoadingSpinner from '@/components/LoadingSpinner';
-import LogWeightModal from '@/components/LogWeightModal';
+import ActivityLogger from '@/components/ActivityLogger';
+import ActivityHistory from '@/components/ActivityHistory';
 import WeightChart from '@/components/WeightChart';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface CompetitionParticipantWithDetails extends CompetitionParticipant {
   competition?: Competition;
@@ -26,7 +28,6 @@ export default function Dashboard() {
   const [totalWeightLoss, setTotalWeightLoss] = useState<number | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -156,8 +157,14 @@ export default function Dashboard() {
     }
   };
 
-  const calculateDaysLeft = (endDate: string) => {
-    const end = new Date(endDate);
+  const calculateDaysLeft = (competition: any) => {
+    // Use database-provided days_left if available
+    if (competition.days_left !== undefined && competition.days_left !== null) {
+      return competition.days_left;
+    }
+    
+    // Fallback to client-side calculation
+    const end = new Date(competition.end_date || competition.competition?.end_date);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     end.setHours(0, 0, 0, 0);
@@ -209,6 +216,29 @@ export default function Dashboard() {
         <WeightChart />
       </div>
 
+      {/* Activity Logging and History */}
+      <div className="mb-8">
+        <h2 className="text-2xl font-semibold text-white mb-4">Track Your Progress</h2>
+        <Tabs defaultValue="log" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="log">Log Activity</TabsTrigger>
+            <TabsTrigger value="history">Recent Activity</TabsTrigger>
+          </TabsList>
+          <TabsContent value="log" className="mt-4">
+            <ActivityLogger 
+              userId={user?.id || ''} 
+              onActivityLogged={fetchData} 
+            />
+          </TabsContent>
+          <TabsContent value="history" className="mt-4">
+            <ActivityHistory 
+              userId={user?.id || ''} 
+              limit={10} 
+            />
+          </TabsContent>
+        </Tabs>
+      </div>
+
       {/* Active Competitions */}
       <div className="mb-8">
         <h2 className="text-2xl font-semibold text-white mb-4">Active Competitions</h2>
@@ -227,7 +257,7 @@ export default function Dashboard() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {activeCompetitions.map((comp) => {
-              const daysLeft = calculateDaysLeft(comp.competition?.end_date || '');
+              const daysLeft = calculateDaysLeft(comp.competition || comp);
               const formattedDays = formatDaysLeft(daysLeft);
               
               return (
@@ -290,13 +320,6 @@ export default function Dashboard() {
           </div>
         )}
       </div>
-
-      <LogWeightModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        userId={user?.id || ''}
-        onWeightLogged={fetchData}
-      />
     </div>
   );
 }

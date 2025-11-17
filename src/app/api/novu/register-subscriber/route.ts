@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import PocketBase from 'pocketbase';
 
 /**
  * API endpoint to register/update a subscriber with Novu
@@ -60,9 +59,9 @@ export async function POST(request: NextRequest) {
 
     console.log('📤 Sending to Novu API:', JSON.stringify(requestBody, null, 2));
 
-    // Register/update subscriber with Novu
+    // Register/update subscriber with Novu (using v1 for consistency)
     const response = await fetch(
-      `https://api.novu.co/v2/subscribers`,
+      `https://api.novu.co/v1/subscribers`,
       {
         method: 'POST',
         headers: {

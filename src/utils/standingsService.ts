@@ -35,21 +35,43 @@ export const standingsService = {
     try {
       const supabase = createBrowserClient();
       
+      console.log('Fetching standings for competition:', competitionId);
+      
+      // First, let's check if the user is authenticated
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      console.log('Current user:', user?.id, 'Auth error:', authError);
+      
+      // Simple query first to test basic connectivity
       const { data: standings, error } = await supabase
         .from('competition_participants')
-        .select(`
-          *,
-          profiles(*)
-        `)
+        .select('*')
         .eq('competition_id', competitionId)
-        .eq('is_active', true)
-        .order('rank', { ascending: true });
+        .eq('is_active', true);
 
-      if (error) throw error;
+      console.log('Raw query result:', { standings, error });
 
-      // Map to include expand for backward compatibility
-      return (standings || []).map(standing => {
-        const profile = (standing as any).profiles;
+      if (error) {
+        console.error('Supabase error in getCurrentStandings:', error);
+        throw error;
+      }
+
+      if (!standings || standings.length === 0) {
+        console.warn('No standings data returned for competition:', competitionId);
+        return [];
+      }
+
+      // Now try to get profiles
+      const userIds = standings.map(s => s.user_id);
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name, avatar')
+        .in('id', userIds);
+
+      console.log('Profiles query result:', { profiles, profilesError });
+
+      // Map the data together
+      return standings.map(standing => {
+        const profile = profiles?.find(p => p.id === standing.user_id);
         return {
           ...standing,
           profile,
@@ -58,9 +80,16 @@ export const standingsService = {
               id: profile?.id || '',
               first_name: profile?.first_name,
               last_name: profile?.last_name,
+              email: '',
             }
           }
         };
+      }).sort((a, b) => {
+        // Sort by rank (nulls last), then by weight_change_percentage (descending)
+        if (a.rank && b.rank) return a.rank - b.rank;
+        if (a.rank && !b.rank) return -1;
+        if (!a.rank && b.rank) return 1;
+        return (b.weight_change_percentage || 0) - (a.weight_change_percentage || 0);
       });
     } catch (error) {
       console.error('Error fetching current standings:', error);
@@ -79,16 +108,35 @@ export const standingsService = {
         .from('competition_participants')
         .select(`
           *,
-          profiles(*),
-          competitions(*)
+          profiles:user_id (
+            id,
+            first_name,
+            last_name,
+            avatar
+          ),
+          competitions (
+            id,
+            name,
+            status,
+            start_date,
+            end_date
+          )
         `)
         .eq('user_id', userId)
         .eq('is_active', true)
-        .order('rank', { ascending: true });
+        .order('rank', { ascending: true, nullsFirst: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase error in getUserStandings:', error);
+        throw error;
+      }
 
-      return (standings || []).map(standing => {
+      if (!standings) {
+        console.warn('No user standings data returned for user:', userId);
+        return [];
+      }
+
+      return standings.map(standing => {
         const profile = (standing as any).profiles;
         return {
           ...standing,
@@ -98,6 +146,7 @@ export const standingsService = {
               id: profile?.id || '',
               first_name: profile?.first_name,
               last_name: profile?.last_name,
+              email: profile?.email || '',
             }
           }
         };
@@ -119,15 +168,28 @@ export const standingsService = {
         .from('competition_participants')
         .select(`
           *,
-          profiles(*)
+          profiles:user_id (
+            id,
+            first_name,
+            last_name,
+            avatar
+          )
         `)
         .eq('competition_id', competitionId)
         .eq('is_active', true)
-        .order('weight_change_percentage', { ascending: false });
+        .order('weight_change_percentage', { ascending: false, nullsFirst: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase error in getParticipantsAsStandings:', error);
+        throw error;
+      }
 
-      return (participants || []).map(participant => {
+      if (!participants) {
+        console.warn('No participants data returned for competition:', competitionId);
+        return [];
+      }
+
+      return participants.map(participant => {
         const profile = (participant as any).profiles;
         return {
           ...participant,
@@ -137,6 +199,7 @@ export const standingsService = {
               id: profile?.id || '',
               first_name: profile?.first_name,
               last_name: profile?.last_name,
+              email: profile?.email || '',
             }
           }
         };

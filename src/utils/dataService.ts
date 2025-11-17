@@ -33,7 +33,7 @@ export const weightService = {
 
       if (error) throw error;
 
-      // Mimic PocketBase structure with page, perPage, totalItems
+      // Return paginated structure
       return {
         page: 1,
         perPage: limit,
@@ -138,12 +138,33 @@ export const competitionService = {
 
       if (error) throw error;
 
+      // Add days_left to each competition
+      const itemsWithDaysLeft = await Promise.all(
+        (items || []).map(async (item) => {
+          try {
+            const { data: daysLeftData } = await supabase
+              .rpc('days_left', {
+                start_ts: item.start_date,
+                end_ts: item.end_date,
+                include_today: true
+              });
+            return {
+              ...item,
+              days_left: daysLeftData ?? undefined
+            };
+          } catch (err) {
+            console.warn('Failed to calculate days_left:', err);
+            return item;
+          }
+        })
+      );
+
       return {
         page: 1,
         perPage: limit,
         totalItems: count || 0,
         totalPages: Math.ceil((count || 0) / limit),
-        items: items || []
+        items: itemsWithDaysLeft
       };
     } catch (error) {
       console.error('Error getting competitions:', error);
@@ -161,7 +182,23 @@ export const competitionService = {
         .single();
 
       if (error) throw error;
-      return result;
+
+      // Add days_left
+      try {
+        const { data: daysLeftData } = await supabase
+          .rpc('days_left', {
+            start_ts: result.start_date,
+            end_ts: result.end_date,
+            include_today: true
+          });
+        return {
+          ...result,
+          days_left: daysLeftData ?? undefined
+        };
+      } catch (err) {
+        console.warn('Failed to calculate days_left:', err);
+        return result;
+      }
     } catch (error) {
       console.error('Error getting competition:', error);
       throw error;

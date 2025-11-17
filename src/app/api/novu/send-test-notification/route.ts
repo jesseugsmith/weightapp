@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
 
     // Send test notification via Novu
     const response = await fetch(
-      `https://api.novu.co/v2/events/trigger`,
+      `https://api.novu.co/v1/events/trigger`,
       {
         method: 'POST',
         headers: {
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          workflowId: 'test-notification', // This workflow ID must exist in Novu
+          name: 'test-notification', // This workflow ID must exist in Novu
           to: {
             subscriberId: user.id,
             email: user.email,
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
           },
           payload: {
             title: 'Test Notification',
-            message: `Hello ${firstName || 'there'}! This is a test notification from FitClash.`,
+            message: `Hello ${firstName || 'there'}! This is a test notification from challngr.`,
             firstName: firstName,
             lastName: lastName,
             testTime: new Date().toISOString()

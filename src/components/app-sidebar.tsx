@@ -19,12 +19,13 @@ import {
   type LucideIcon,
   CloudLightning,
   Key,
+  MessageCircle,
 } from "lucide-react"
 
 import { NavMain } from "@/components/nav-main"
 import { NavSecondary } from "@/components/nav-secondary"
 import { NavUser } from "@/components/nav-user"
-import LogWeightModal from "@/components/LogWeightModal"
+import LogActivityModal from "@/components/LogActivityModal"
 import {
   Sidebar,
   SidebarContent,
@@ -39,6 +40,7 @@ import { useAuth } from "@/hooks/useAuth"
 import { createBrowserClient } from "@/lib/supabase"
 import type { Profile } from "@/types/supabase.types"
 import { usePathname, useRouter } from "next/navigation"
+import { useUnreadMessageCount, UnreadBadge } from "@/components/UnreadMessageCount"
 
 const data = {
   user: {
@@ -72,9 +74,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     const pathname = usePathname();
     const { user, signOut } = useAuth();
     const { hasPermission, hasRole } = usePermissions();
-    const [isLogWeightModalOpen, setIsLogWeightModalOpen] = React.useState(false);
+    const [isLogActivityModalOpen, setIsLogActivityModalOpen] = React.useState(false);
     const [profile, setProfile] = useState<Profile | null>(null);
     const supabase = createBrowserClient();
+    const { totalUnreadCount } = useUnreadMessageCount();
     
     // Fetch user profile
     useEffect(() => {
@@ -126,6 +129,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           icon: Bot,
           items: [],
         },
+        {
+          title: "Messages",
+          url: "/messaging",
+          icon: MessageCircle,
+          items: [],
+        },
       ];
       
       // Add admin menu item if user has admin access
@@ -157,14 +166,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             ? `${profile.first_name} ${profile.last_name}` 
             : profile?.first_name || "User",
           email: user?.email || '',
-          avatar: profile?.avatar || '/default-avatar.svg',
+          avatar: profile?.photo_url || profile?.avatar || '/default-avatar.svg',
         },
         navMain,
         navSecondary: [
           {
-            title: "Log Weight",
+            title: "Log Activity",
             icon: Scale,
-            onClick: () => setIsLogWeightModalOpen(true),
+            onClick: () => setIsLogActivityModalOpen(true),
           },
           {
             title: "API Tokens",
@@ -199,7 +208,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   <CloudLightning className="size-4 "/>
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">FitClash</span>
+                  <span className="truncate font-semibold">challngr</span>
                   <span className="truncate text-xs">An Absent Application</span>
                 </div>
               </a>
@@ -208,18 +217,18 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <NavMain items={navigationData.navMain} />
+        <NavMain items={navigationData.navMain} unreadCount={totalUnreadCount} />
         <NavSecondary items={navigationData.navSecondary} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>
         <NavUser user={navigationData.user} />
       </SidebarFooter>
-      <LogWeightModal
-        isOpen={isLogWeightModalOpen}
-        onClose={() => setIsLogWeightModalOpen(false)}
+      <LogActivityModal
+        isOpen={isLogActivityModalOpen}
+        onClose={() => setIsLogActivityModalOpen(false)}
         userId={user?.id || ''}
-        onWeightLogged={() => {
-          setIsLogWeightModalOpen(false);
+        onActivityLogged={() => {
+          setIsLogActivityModalOpen(false);
           // Optionally refresh data
         }}
       />

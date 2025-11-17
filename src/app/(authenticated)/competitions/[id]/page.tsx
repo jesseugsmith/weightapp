@@ -9,6 +9,8 @@ import LoadingSpinner from '@/components/LoadingSpinner';
 import { useAuth } from '@/hooks/useAuth';
 import LeaderboardCard from '@/components/LeaderboardCard';
 import EditCompetitionModal from '@/components/EditCompetitionModal';
+import CompetitionMessagingBoard from '@/components/CompetitionMessagingBoard';
+import { MessageCircle, Trophy } from 'lucide-react';
 
 export default function CompetitionDetails() {
   const params = useParams();
@@ -23,6 +25,7 @@ export default function CompetitionDetails() {
   const [success, setSuccess] = useState<string | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [participantCount, setParticipantCount] = useState(0);
+  const [activeTab, setActiveTab] = useState<'leaderboard' | 'chat'>('leaderboard');
 
   const isAdmin = hasPermission('manage_competitions');
 
@@ -110,20 +113,15 @@ export default function CompetitionDetails() {
     setSuccess(null);
     
     try {
-      // Note: This functionality would need to be reimplemented with PocketBase
-      // Since PocketBase doesn't have edge functions like Supabase, you would need to:
-      // 1. Create a separate API endpoint in your Next.js app
-      // 2. Or use a service like Resend/SendGrid directly from the client
-      // 3. Or implement this server-side functionality differently
-      
-      setError('Competition email functionality not yet implemented with PocketBase');
-      
-      // Placeholder for future implementation:
+      // TODO: Implement competition email functionality
+      // This would require creating an API endpoint to send competition details via email
       // const response = await fetch('/api/send-competition-details', {
       //   method: 'POST',
       //   headers: { 'Content-Type': 'application/json' },
       //   body: JSON.stringify({ competition_id: competition.id }),
       // });
+      
+      setError('Competition email functionality not yet implemented');
       
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send competition details');
@@ -258,7 +256,13 @@ export default function CompetitionDetails() {
                   <>
                     <button
                       onClick={() => setIsEditModalOpen(true)}
-                      className="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700"
+                      disabled={competition.status === 'started'}
+                      className={`inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-md ${
+                        competition.status === 'started'
+                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                          : 'bg-blue-600 text-white hover:bg-blue-700'
+                      }`}
+                      title={competition.status === 'started' ? 'Cannot edit active competitions' : 'Edit competition'}
                     >
                       Edit Competition
                     </button>
@@ -359,11 +363,51 @@ export default function CompetitionDetails() {
 
       {/* Leaderboard */}
       <div className="mb-6 w-full">
-        <h2 className="text-xl font-bold text-foreground mb-3 max-w-7xl mx-auto">Current Standings</h2>
-        <LeaderboardCard 
-          competitionId={competition.id}
-          isEnded={competition.status === 'completed'}
-        />
+        <div className="max-w-7xl mx-auto">
+          {/* Tab Navigation */}
+          <div className="flex border-b border-gray-200 mb-6">
+            <button
+              onClick={() => setActiveTab('leaderboard')}
+              className={`flex items-center gap-2 px-6 py-3 font-medium text-sm border-b-2 transition-colors ${
+                activeTab === 'leaderboard'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Trophy className="w-4 h-4" />
+              Leaderboard
+            </button>
+            <button
+              onClick={() => setActiveTab('chat')}
+              className={`flex items-center gap-2 px-6 py-3 font-medium text-sm border-b-2 transition-colors ${
+                activeTab === 'chat'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <MessageCircle className="w-4 h-4" />
+              Chat
+            </button>
+          </div>
+
+          {/* Tab Content */}
+          {activeTab === 'leaderboard' ? (
+            <div>
+              <h2 className="text-xl font-bold text-foreground mb-3">Current Standings</h2>
+              <LeaderboardCard 
+                competitionId={competition.id}
+                isEnded={competition.status === 'completed'}
+              />
+            </div>
+          ) : (
+            <div className="bg-white rounded-lg border border-gray-200 shadow-sm" style={{ height: '600px' }}>
+              <CompetitionMessagingBoard
+                competitionId={competition.id}
+                competitionName={competition.name}
+              />
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Edit Competition Modal */}

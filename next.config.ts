@@ -13,6 +13,9 @@ const nextConfig: NextConfig = {
   
   output: 'standalone',
   
+  // Explicitly set the output file tracing root to prevent lockfile confusion
+  outputFileTracingRoot: __dirname,
+  
   images: {
     remotePatterns: [
       {

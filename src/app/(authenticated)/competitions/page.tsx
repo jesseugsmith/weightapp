@@ -180,24 +180,51 @@ export default function Competitions() {
         const competitionId = participation.competition?.id;
         if (!competitionId) continue;
         
+        console.log('Fetching participants for competition:', competitionId);
+        
+        // First, let's try a simple query without joins
         const { data: participants, error } = await supabase
           .from('competition_participants')
-          .select(`
-            *,
-            profiles(*)
-          `)
+          .select('*')
           .eq('competition_id', competitionId)
-          .limit(10); // Limit to first 10 participants for display
+          .eq('is_active', true)
+          .limit(10);
 
         if (error) {
           console.error(`Error fetching participants for competition ${competitionId}:`, error);
+          console.error('Error details:', {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint
+          });
           continue;
         }
         
-        const participantsWithAvatars: ParticipantWithProfile[] = (participants || [])
-          .filter((p: any) => p.profiles)
+        console.log(`Found ${participants?.length || 0} participants for competition ${competitionId}`);
+        
+        if (!participants || participants.length === 0) {
+          participantsMap[competitionId] = [];
+          continue;
+        }
+        
+        // Now fetch profiles separately
+        const userIds = participants.map(p => p.user_id);
+        const { data: profiles, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, first_name, last_name, avatar')
+          .in('id', userIds);
+        
+        if (profilesError) {
+          console.error(`Error fetching profiles for competition ${competitionId}:`, profilesError);
+          // Continue with participants but without profile data
+        }
+        
+        const participantsWithAvatars: ParticipantWithProfile[] = participants
           .map((p: any) => {
-            const profile = p.profiles as Profile;
+            const profile = profiles?.find(prof => prof.id === p.user_id);
+            if (!profile) return null;
+            
             // Avatar is a URL string in Supabase Storage
             const avatarUrl = profile.avatar || null;
             
@@ -205,7 +232,8 @@ export default function Competitions() {
               profile,
               avatarUrl
             };
-          });
+          })
+          .filter(Boolean) as ParticipantWithProfile[];
         
         participantsMap[competitionId] = participantsWithAvatars;
       }
@@ -213,6 +241,7 @@ export default function Competitions() {
       setCompetitionParticipants(participantsMap);
     } catch (error) {
       console.error('Error fetching competition participants:', error);
+      console.error('Error details:', error);
     }
   };
 
@@ -277,8 +306,14 @@ export default function Competitions() {
     return competition.created_by === user?.id || hasPermission('manage_competitions');
   };
 
-  const calculateDaysLeft = (endDate: string) => {
-    const end = new Date(endDate);
+  const calculateDaysLeft = (competition: any) => {
+    // Use database-provided days_left if available
+    if (competition.days_left !== undefined && competition.days_left !== null) {
+      return competition.days_left;
+    }
+    
+    // Fallback to client-side calculation
+    const end = new Date(competition.end_date);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     end.setHours(0, 0, 0, 0);
@@ -391,7 +426,7 @@ export default function Competitions() {
             </Button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {myCompetitions.map((participation) => {
               const competition = participation.competition;
               if (!competition) return null;
@@ -402,12 +437,12 @@ export default function Competitions() {
                   className="bg-card rounded-lg shadow overflow-hidden hover:shadow-lg transition-shadow duration-200 cursor-pointer border border-border"
                   onClick={() => router.push(`/competitions/${competition.id}`)}
                 >
-                  <div className="p-6">
-                    <div className="flex items-start justify-between mb-4">
-                      <h3 className="text-lg font-medium text-card-foreground flex-grow">
+                  <div className="p-4">
+                    <div className="flex items-start justify-between mb-2">
+                      <h3 className="text-sm font-medium text-card-foreground flex-grow line-clamp-2">
                         {competition.name}
                       </h3>
-                      <div className="flex items-center space-x-2 ml-2">
+                      <div className="flex items-center space-x-1 ml-2 flex-shrink-0">
                         {competition.status && (
                           <span className={`px-2 py-1 text-xs font-medium rounded-full ${
                             competition.status === 'completed' 
@@ -428,10 +463,10 @@ export default function Competitions() {
                             }}
                             variant="ghost"
                             size="sm"
-                            className="p-1 text-muted-foreground hover:text-destructive transition-colors"
+                            className="p-1 text-muted-foreground hover:text-destructive transition-colors h-6 w-6"
                             title="Delete competition"
                           >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" 
                                 d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                             </svg>
@@ -440,23 +475,58 @@ export default function Competitions() {
                       </div>
                     </div>
                     
-                    <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
-                      {competition.description || 'No description provided'}
-                    </p>
+                    {competition.description && (
+                      <p className="text-xs text-muted-foreground mb-3 line-clamp-2">
+                        {competition.description}
+                      </p>
+                    )}
                     
-                    {/* Participant avatars */}
-                    <div className="mb-4">
-                      {renderParticipantAvatars(competition.id)}
+                    {/* Compact participant info */}
+                    <div className="mb-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex -space-x-1">
+                          {competitionParticipants[competition.id]?.slice(0, 3).map((participant, index) => (
+                            <div
+                              key={index}
+                              className="w-6 h-6 rounded-full bg-gray-200 border-2 border-white overflow-hidden flex-shrink-0"
+                            >
+                              {participant.avatarUrl ? (
+                                <img 
+                                  src={participant.avatarUrl} 
+                                  alt={`${participant.profile.first_name || 'User'}'s avatar`}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <div className="w-full h-full bg-gray-300 flex items-center justify-center">
+                                  <span className="text-xs text-gray-600 font-medium">
+                                    {participant.profile.first_name?.[0] || 'U'}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                          {(competitionParticipants[competition.id]?.length || 0) > 3 && (
+                            <div className="w-6 h-6 rounded-full bg-gray-100 border-2 border-white flex items-center justify-center">
+                              <span className="text-xs text-gray-600 font-medium">
+                                +{(competitionParticipants[competition.id]?.length || 0) - 3}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {competitionParticipants[competition.id]?.length || 0} participants
+                        </span>
+                      </div>
                     </div>
                     
-                    <div className="flex items-center text-xs text-gray-400 mb-4">
-                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="flex items-center text-xs text-gray-400 mb-3">
+                      <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" 
                           d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                       </svg>
                       {competition.end_date &&
                         (() => {
-                          const daysLeft = calculateDaysLeft(competition.end_date);
+                          const daysLeft = calculateDaysLeft(competition);
                           const formattedDays = formatDaysLeft(daysLeft);
                           return (
                             <span className={
@@ -471,35 +541,19 @@ export default function Competitions() {
                       }
                     </div>
 
-                    <div className="flex justify-between items-center">
-                      {competition.status === 'draft' && (
-                        <div className="flex space-x-2">
-                          <Button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedCompetition(competition);
-                              setIsInviteModalOpen(true);
-                            }}
-                            variant="ghost"
-                            size="sm"
-                            className="text-xs"
-                          >
-                            Invite Members
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                    {competition.status === 'started' && (
-                      <LeaderboardCard 
-                        competitionId={competition.id} 
-                        isEnded={false}
-                      />
-                    )}
-                    {competition.status === 'completed' && (
-                      <LeaderboardCard 
-                        competitionId={competition.id} 
-                        isEnded={true}
-                      />
+                    {competition.status === 'draft' && (
+                      <Button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedCompetition(competition);
+                          setIsInviteModalOpen(true);
+                        }}
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs w-full h-7"
+                      >
+                        Invite Members
+                      </Button>
                     )}
                   </div>
                 </div>

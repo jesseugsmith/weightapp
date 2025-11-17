@@ -6,13 +6,24 @@ import { NextRequest, NextResponse } from 'next/server';
  */
 export async function POST(request: NextRequest) {
   try {
-    const { userId, subscription } = await request.json();
+    const { userId, subscription, isSimulator } = await request.json();
 
     if (!userId || !subscription) {
       return NextResponse.json(
         { error: 'Missing userId or subscription' },
         { status: 400 }
       );
+    }
+
+    // Skip registration if running on simulator
+    if (isSimulator === true) {
+      console.log('⏭️ Skipping Novu push registration - running on simulator');
+      console.log('📱 Simulator detected for user:', userId);
+      return NextResponse.json({
+        success: true,
+        message: 'Skipped push registration (simulator)',
+        skipped: true
+      });
     }
 
     // Get Novu API key from environment (server-side only)
@@ -26,27 +37,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const novuApiUrl = `https://api.novu.co/v1/subscribers/${userId}/credentials`;
     console.log('📱 Registering push credentials for subscriber:', userId);
     console.log('📱 Subscription:', JSON.stringify(subscription, null, 2));
+    console.log('🌐 Calling Novu API:', novuApiUrl);
 
     // For web push (browser native), we use push-webhook provider
     // For FCM, you'd need Firebase SDK to get FCM tokens
-    const response = await fetch(
-      `https://api.novu.co/v1/subscribers/${userId}/credentials`,
-      {
-        method: 'PUT',
-        headers: {
-          'Authorization': `ApiKey ${novuApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          providerId: 'push-webhook', // Web push provider (change if using FCM)
-          credentials: {
-            deviceTokens: [JSON.stringify(subscription)]
-          }
-        })
-      }
-    );
+    const response = await fetch(novuApiUrl, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `ApiKey ${novuApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        providerId: 'push-webhook', // Web push provider (change if using FCM)
+        credentials: {
+          deviceTokens: [JSON.stringify(subscription)]
+        }
+      })
+    });
 
     console.log('📱 Novu push API response:', response.status, response.statusText);
 
