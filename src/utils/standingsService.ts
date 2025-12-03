@@ -41,27 +41,48 @@ export const standingsService = {
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       console.log('Current user:', user?.id, 'Auth error:', authError);
       
-      // Simple query first to test basic connectivity
-      const { data: standings, error } = await supabase
+      // Fetch participants
+      const { data: participants, error: participantsError } = await supabase
         .from('competition_participants')
         .select('*')
         .eq('competition_id', competitionId)
         .eq('is_active', true);
 
-      console.log('Raw query result:', { standings, error });
+      console.log('Participants query result:', { participants, error: participantsError });
 
-      if (error) {
-        console.error('Supabase error in getCurrentStandings:', error);
-        throw error;
+      if (participantsError) {
+        console.error('Supabase error fetching participants:', participantsError);
+        throw participantsError;
       }
 
-      if (!standings || standings.length === 0) {
-        console.warn('No standings data returned for competition:', competitionId);
+      if (!participants || participants.length === 0) {
+        console.warn('No participants data returned for competition:', competitionId);
         return [];
       }
 
+      // Fetch calculation results to get proper ranks
+      const participantIds = participants.map(p => p.id);
+      const { data: calculationResults, error: calcError } = await supabase
+        .from('calculation_results')
+        .select('subject_id, rank, calculated_score')
+        .eq('competition_id', competitionId)
+        .eq('subject_type', 'participant')
+        .in('subject_id', participantIds);
+
+      console.log('Calculation results query:', { calculationResults, error: calcError });
+
+      // Create a map of participant_id -> rank from calculation_results
+      const rankMap = new Map<string, number>();
+      if (calculationResults) {
+        calculationResults.forEach(cr => {
+          if (cr.rank !== null && cr.rank !== undefined) {
+            rankMap.set(cr.subject_id, cr.rank);
+          }
+        });
+      }
+
       // Now try to get profiles
-      const userIds = standings.map(s => s.user_id);
+      const userIds = participants.map(s => s.user_id);
       const { data: profiles, error: profilesError } = await supabase
         .from('profiles')
         .select('id, first_name, last_name, avatar')
@@ -69,11 +90,15 @@ export const standingsService = {
 
       console.log('Profiles query result:', { profiles, profilesError });
 
-      // Map the data together
-      return standings.map(standing => {
-        const profile = profiles?.find(p => p.id === standing.user_id);
+      // Map the data together with ranks from calculation_results
+      const standings = participants.map(participant => {
+        const profile = profiles?.find(p => p.id === participant.user_id);
+        const rankFromCalc = rankMap.get(participant.id);
+        
         return {
-          ...standing,
+          ...participant,
+          // Use rank from calculation_results if available, otherwise fall back to participant.rank
+          rank: rankFromCalc !== undefined ? rankFromCalc : participant.rank,
           profile,
           expand: {
             user_id: {
@@ -91,6 +116,8 @@ export const standingsService = {
         if (!a.rank && b.rank) return 1;
         return (b.weight_change_percentage || 0) - (a.weight_change_percentage || 0);
       });
+
+      return standings;
     } catch (error) {
       console.error('Error fetching current standings:', error);
       return [];
@@ -189,10 +216,33 @@ export const standingsService = {
         return [];
       }
 
-      return participants.map(participant => {
+      // Try to get ranks from calculation_results
+      const participantIds = participants.map(p => p.id);
+      const { data: calculationResults } = await supabase
+        .from('calculation_results')
+        .select('subject_id, rank')
+        .eq('competition_id', competitionId)
+        .eq('subject_type', 'participant')
+        .in('subject_id', participantIds);
+
+      // Create a map of participant_id -> rank
+      const rankMap = new Map<string, number>();
+      if (calculationResults) {
+        calculationResults.forEach(cr => {
+          if (cr.rank !== null && cr.rank !== undefined) {
+            rankMap.set(cr.subject_id, cr.rank);
+          }
+        });
+      }
+
+      return participants.map((participant, index) => {
         const profile = (participant as any).profiles;
+        const rankFromCalc = rankMap.get(participant.id);
+        
         return {
           ...participant,
+          // Use rank from calculation_results if available, otherwise use index + 1
+          rank: rankFromCalc !== undefined ? rankFromCalc : (index + 1),
           profile,
           expand: {
             user_id: {
@@ -203,6 +253,13 @@ export const standingsService = {
             }
           }
         };
+      }).sort((a, b) => {
+        // Sort by rank if available
+        if (a.rank && b.rank) return a.rank - b.rank;
+        if (a.rank && !b.rank) return -1;
+        if (!a.rank && b.rank) return 1;
+        // Otherwise sort by weight_change_percentage
+        return (b.weight_change_percentage || 0) - (a.weight_change_percentage || 0);
       });
     } catch (error) {
       console.error('Error fetching participants:', error);
@@ -283,6 +340,33 @@ export const standingsService = {
     try {
       const supabase = createBrowserClient();
       
+      // First, get the participant ID for this user
+      const { data: participant, error: participantError } = await supabase
+        .from('competition_participants')
+        .select('id')
+        .eq('competition_id', competitionId)
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        .single();
+
+      if (participantError || !participant) {
+        throw participantError || new Error('Participant not found');
+      }
+
+      // Get rank from calculation_results
+      const { data: calcResult, error: calcError } = await supabase
+        .from('calculation_results')
+        .select('rank')
+        .eq('competition_id', competitionId)
+        .eq('subject_type', 'participant')
+        .eq('subject_id', participant.id)
+        .single();
+
+      if (!calcError && calcResult?.rank !== null && calcResult?.rank !== undefined) {
+        return calcResult.rank;
+      }
+
+      // Fallback to participant rank if calculation_results doesn't have it
       const { data: standing, error } = await supabase
         .from('competition_participants')
         .select('rank')
@@ -291,10 +375,11 @@ export const standingsService = {
         .eq('is_active', true)
         .single();
 
-      if (error) throw error;
-      return standing?.rank;
-    } catch (error) {
-      // If no standing found, try to get from participants
+      if (!error && standing?.rank !== null && standing?.rank !== undefined) {
+        return standing.rank;
+      }
+
+      // Last resort: calculate rank from participants
       try {
         const participants = await this.getParticipantsAsStandings(competitionId);
         const userParticipant = participants.find(p => p.user_id === userId);
@@ -306,6 +391,9 @@ export const standingsService = {
         console.error('Error fetching user rank from participants:', participantError);
       }
       
+      return undefined;
+    } catch (error) {
+      console.error('Error fetching user rank:', error);
       return undefined;
     }
   }

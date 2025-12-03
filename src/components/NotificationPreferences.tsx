@@ -129,26 +129,46 @@ export default function NotificationPreferences() {
   const updatePreferences = async (updates: Partial<NotificationPreferencesType>) => {
     if (!preferences) return;
 
-    setSaving(true);
     setError(null);
+    
+    // Optimistic update - update UI immediately
+    const optimisticPrefs = { ...preferences, ...updates };
+    setPreferences(optimisticPrefs);
+    
+    setSaving(true);
 
     try {
       const supabase = createBrowserClient();
-      const updatedPrefs = { ...preferences, ...updates, updated_at: new Date().toISOString() };
+      
+      // Only update the fields that are allowed to be updated
+      // Don't include id, created_at, user_id, etc.
+      const updateData = {
+        ...updates,
+        updated_at: new Date().toISOString()
+      };
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('notification_preferences')
-        .update(updatedPrefs)
-        .eq('id', preferences.id);
+        .update(updateData)
+        .eq('id', preferences.id)
+        .select()
+        .single();
 
-      if (error) throw error;
+      if (error) {
+        // Revert optimistic update on error
+        setPreferences(preferences);
+        throw error;
+      }
 
-      setPreferences(updatedPrefs);
+      // Update local state with the returned data from server
+      setPreferences(data);
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
     } catch (err) {
       console.error('Error updating preferences:', err);
-      setError('Failed to save preferences');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to save preferences';
+      setError(errorMessage);
+      // Error toast or alert could go here
     } finally {
       setSaving(false);
     }
@@ -377,10 +397,16 @@ export default function NotificationPreferences() {
           </div>
 
           <div className="flex items-center justify-between">
-            <Label htmlFor="push">Push notifications</Label>
+            <div className="flex flex-col">
+              <Label htmlFor="push">Push notifications</Label>
+              {saving && preferences.push_enabled !== undefined && (
+                <span className="text-xs text-muted-foreground">Saving...</span>
+              )}
+            </div>
             <Switch
               id="push"
               checked={preferences.push_enabled}
+              disabled={saving}
               onCheckedChange={(push_enabled: boolean) => updatePreferences({ push_enabled })}
             />
           </div>

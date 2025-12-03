@@ -34,10 +34,25 @@ export async function getAuthenticatedSupabase(request: NextRequest): Promise<{ 
     }
 
     // Create Supabase server client
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    
+    if (!supabaseUrl || !supabaseAnonKey) {
+      console.error('❌ Missing Supabase environment variables:', {
+        hasUrl: !!supabaseUrl,
+        hasKey: !!supabaseAnonKey,
+      });
+      return null;
+    }
+    
+    // Log the URL (safe to log, it's public)
+    console.log('🌐 Supabase URL:', supabaseUrl);
+    console.log('🔑 Supabase key configured:', !!supabaseAnonKey);
+    
     const cookieStore = await cookies();
     const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      supabaseUrl,
+      supabaseAnonKey,
       {
         cookies: {
           getAll() {
