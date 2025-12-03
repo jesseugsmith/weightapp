@@ -1,0 +1,297 @@
+{
+	"info": {
+		"_postman_id": "notification-queue-api",
+		"name": "Notification Queue API",
+		"description": "API endpoints for processing the notification queue and sending notifications via Novu",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{SERVICE_ROLE_KEY}}",
+				"type": "string"
+			}
+		]
+	},
+	"item": [
+		{
+			"name": "Process Queue",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{SERVICE_ROLE_KEY}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{BASE_URL}}/api/novu/process-queue?batchSize=50",
+					"host": [
+						"{{BASE_URL}}"
+					],
+					"path": [
+						"api",
+						"novu",
+						"process-queue"
+					],
+					"query": [
+						{
+							"key": "batchSize",
+							"value": "50",
+							"description": "Number of notifications to process per request (default: 50)",
+							"disabled": false
+						}
+					]
+				},
+				"description": "Processes unprocessed notifications from the queue and sends them to Novu. Marks notifications as processed by setting push_sent_at timestamp."
+			},
+			"response": [
+				{
+					"name": "Success Response",
+					"originalRequest": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{BASE_URL}}/api/novu/process-queue?batchSize=50",
+							"host": [
+								"{{BASE_URL}}"
+							],
+							"path": [
+								"api",
+								"novu",
+								"process-queue"
+							],
+							"query": [
+								{
+									"key": "batchSize",
+									"value": "50"
+								}
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n    \"success\": true,\n    \"message\": \"Processed 10 notifications, 0 failed\",\n    \"processed\": 10,\n    \"failed\": 0,\n    \"total\": 10\n}"
+				},
+				{
+					"name": "Success with Errors",
+					"originalRequest": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{BASE_URL}}/api/novu/process-queue?batchSize=50",
+							"host": [
+								"{{BASE_URL}}"
+							],
+							"path": [
+								"api",
+								"novu",
+								"process-queue"
+							],
+							"query": [
+								{
+									"key": "batchSize",
+									"value": "50"
+								}
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n    \"success\": true,\n    \"message\": \"Processed 8 notifications, 2 failed\",\n    \"processed\": 8,\n    \"failed\": 2,\n    \"total\": 10,\n    \"errors\": [\n        {\n            \"notificationId\": \"uuid-here\",\n            \"error\": \"Novu API error message\"\n        },\n        {\n            \"notificationId\": \"uuid-here\",\n            \"error\": \"Failed to update: error message\"\n        }\n    ]\n}"
+				},
+				{
+					"name": "No Notifications",
+					"originalRequest": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{BASE_URL}}/api/novu/process-queue",
+							"host": [
+								"{{BASE_URL}}"
+							],
+							"path": [
+								"api",
+								"novu",
+								"process-queue"
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n    \"success\": true,\n    \"message\": \"No notifications to process\",\n    \"processed\": 0,\n    \"failed\": 0\n}"
+				},
+				{
+					"name": "Unauthorized",
+					"originalRequest": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{BASE_URL}}/api/novu/process-queue",
+							"host": [
+								"{{BASE_URL}}"
+							],
+							"path": [
+								"api",
+								"novu",
+								"process-queue"
+							]
+						}
+					},
+					"status": "Unauthorized",
+					"code": 401,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n    \"error\": \"Unauthorized - Service key required\"\n}"
+				}
+			]
+		},
+		{
+			"name": "Check Queue Status",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{SERVICE_ROLE_KEY}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{BASE_URL}}/api/novu/process-queue",
+					"host": [
+						"{{BASE_URL}}"
+					],
+					"path": [
+						"api",
+						"novu",
+						"process-queue"
+					]
+				},
+				"description": "Returns the number of pending (unprocessed) notifications in the queue."
+			},
+			"response": [
+				{
+					"name": "Success Response",
+					"originalRequest": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{BASE_URL}}/api/novu/process-queue",
+							"host": [
+								"{{BASE_URL}}"
+							],
+							"path": [
+								"api",
+								"novu",
+								"process-queue"
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n    \"success\": true,\n    \"pending\": 5\n}"
+				},
+				{
+					"name": "Unauthorized",
+					"originalRequest": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{BASE_URL}}/api/novu/process-queue",
+							"host": [
+								"{{BASE_URL}}"
+							],
+							"path": [
+								"api",
+								"novu",
+								"process-queue"
+							]
+						}
+					},
+					"status": "Unauthorized",
+					"code": 401,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json"
+						}
+					],
+					"cookie": [],
+					"body": "{\n    \"error\": \"Unauthorized - Service key required\"\n}"
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "BASE_URL",
+			"value": "http://localhost:3000",
+			"type": "string",
+			"description": "Base URL for the API (e.g., http://localhost:3000 or https://your-domain.com)"
+		},
+		{
+			"key": "SERVICE_ROLE_KEY",
+			"value": "your-service-role-key-here",
+			"type": "string",
+			"description": "Supabase service role key for authentication"
+		}
+	]
+}
+

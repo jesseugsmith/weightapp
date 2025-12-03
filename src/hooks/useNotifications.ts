@@ -72,6 +72,7 @@ export function useNotifications(): UseNotificationsReturn {
         .from('notifications')
         .select('*')
         .eq('user_id', user.id)
+        .eq('is_read', false) // Only show unread notifications
         .order('created_at', { ascending: false })
         .limit(50);
 
@@ -149,14 +150,8 @@ export function useNotifications(): UseNotificationsReturn {
 
       if (error) throw error;
 
-      // Update local state
-      setNotifications(prev => 
-        prev.map(n => 
-          n.id === notificationId 
-            ? { ...n, is_read: true, updated_at: new Date().toISOString() }
-            : n
-        )
-      );
+      // Remove from list since we only show unread notifications
+      setNotifications(prev => prev.filter(n => n.id !== notificationId));
     } catch (err) {
       console.error('Error marking notification as read:', err);
       setError('Failed to mark notification as read');
@@ -181,10 +176,8 @@ export function useNotifications(): UseNotificationsReturn {
 
       if (error) throw error;
 
-      // Update local state
-      setNotifications(prev => 
-        prev.map(n => ({ ...n, is_read: true, updated_at: new Date().toISOString() }))
-      );
+      // Clear the list since we only show unread notifications
+      setNotifications([]);
     } catch (err) {
       console.error('Error marking all notifications as read:', err);
       setError('Failed to mark notifications as read');
@@ -280,17 +273,25 @@ export function useNotifications(): UseNotificationsReturn {
         },
         (payload) => {
           if (payload.eventType === 'INSERT') {
-            // Add new notification
-            setNotifications(prev => [payload.new as Notification, ...prev]);
+            // Only add if unread
+            const newNotification = payload.new as Notification;
+            if (!newNotification.is_read) {
+              setNotifications(prev => [newNotification, ...prev]);
+            }
           } else if (payload.eventType === 'UPDATE') {
-            // Update existing notification
-            setNotifications(prev => 
-              prev.map(n => 
-                n.id === payload.new.id 
-                  ? payload.new as Notification 
-                  : n
-              )
-            );
+            const updatedNotification = payload.new as Notification;
+            // If marked as read, remove from list; otherwise update it
+            if (updatedNotification.is_read) {
+              setNotifications(prev => prev.filter(n => n.id !== updatedNotification.id));
+            } else {
+              setNotifications(prev => 
+                prev.map(n => 
+                  n.id === updatedNotification.id 
+                    ? updatedNotification 
+                    : n
+                )
+              );
+            }
           } else if (payload.eventType === 'DELETE') {
             // Remove deleted notification
             setNotifications(prev => 
