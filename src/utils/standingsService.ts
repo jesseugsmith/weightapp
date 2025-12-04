@@ -27,6 +27,23 @@ export interface ParticipantWithUser extends CompetitionParticipant {
   };
 }
 
+export interface TeamStanding {
+  team_id: string;
+  team_name: string;
+  team_score: number;
+  team_change_percentage: number;
+  rank: number;
+  member_count: number;
+  members: TeamMember[];
+}
+
+export interface TeamMember {
+  id: string;
+  name: string;
+  avatar?: string;
+  contribution: number;
+}
+
 export const standingsService = {
   /**
    * Get current standings for a competition
@@ -290,22 +307,35 @@ export const standingsService = {
 
   /**
    * Get leaderboard data with additional metrics
+   * Automatically handles team competitions vs individual competitions
    */
   async getLeaderboard(competitionId: string) {
     try {
       const supabase = createBrowserClient();
       
-      const [standings, competitionResult] = await Promise.all([
-        this.getCurrentStandings(competitionId),
-        supabase
-          .from('competitions')
-          .select('*')
-          .eq('id', competitionId)
-          .single()
-      ]);
+      // First get competition to determine mode
+      const { data: competition, error: compError } = await supabase
+        .from('competitions')
+        .select('*')
+        .eq('id', competitionId)
+        .single();
 
-      if (competitionResult.error) throw competitionResult.error;
-      const competition = competitionResult.data;
+      if (compError) throw compError;
+
+      // Handle team competitions
+      if (competition.competition_mode === 'team') {
+        const teamStandings = await this.getTeamStandings(competitionId);
+        return {
+          competition,
+          standings: [], // Individual standings not applicable for team mode
+          teams: teamStandings,
+          isTeamCompetition: true,
+          isCalculated: teamStandings.length > 0,
+        };
+      }
+
+      // Handle individual/collaborative competitions
+      const standings = await this.getCurrentStandings(competitionId);
 
       // If no standings exist, fall back to participants
       if (standings.length === 0) {
@@ -318,6 +348,7 @@ export const standingsService = {
             calculated_at: new Date().toISOString(),
             is_current: true
           })),
+          isTeamCompetition: false,
           isCalculated: false
         };
       }
@@ -325,10 +356,133 @@ export const standingsService = {
       return {
         competition,
         standings,
+        isTeamCompetition: false,
         isCalculated: true
       };
     } catch (error) {
       console.error('Error fetching leaderboard:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get team standings for a team competition
+   */
+  async getTeamStandings(competitionId: string): Promise<TeamStanding[]> {
+    try {
+      const supabase = createBrowserClient();
+
+      // Fetch team calculation results
+      const { data: teamResults, error: teamError } = await supabase
+        .from('calculation_results')
+        .select('*')
+        .eq('competition_id', competitionId)
+        .eq('subject_type', 'team')
+        .order('rank', { ascending: true, nullsFirst: false });
+
+      if (teamError) {
+        console.error('Error fetching team results:', teamError);
+        return [];
+      }
+
+      if (!teamResults || teamResults.length === 0) {
+        console.log('No team results found for competition:', competitionId);
+        return [];
+      }
+
+      // Get team details for each team
+      const teamIds = teamResults.map(r => r.subject_id);
+      const { data: teams, error: teamsError } = await supabase
+        .from('teams')
+        .select(`
+          id,
+          name,
+          avatar,
+          members:team_members(
+            id,
+            user_id,
+            status,
+            user:profiles!team_members_user_id_fkey(
+              id,
+              first_name,
+              last_name,
+              nickname,
+              avatar
+            )
+          )
+        `)
+        .in('id', teamIds);
+
+      if (teamsError) {
+        console.error('Error fetching teams:', teamsError);
+        return [];
+      }
+
+      // Helper to get display name
+      const getDisplayName = (user: any): string => {
+        if (!user) return 'Unknown';
+        if (user.first_name && user.last_name) return `${user.first_name} ${user.last_name}`;
+        return user.nickname || user.first_name || 'Unknown';
+      };
+
+      // Transform and merge data
+      const teamStandings: TeamStanding[] = teamResults.map((result: any) => {
+        const team = teams?.find(t => t.id === result.subject_id);
+        const calcData = result.calculation_data || {};
+
+        const members: TeamMember[] = (team?.members || [])
+          .filter((m: any) => m.status === 'active')
+          .map((m: any) => ({
+            id: m.user?.id || m.user_id,
+            name: getDisplayName(m.user),
+            avatar: m.user?.avatar,
+            contribution: 0, // Individual contribution would need to be fetched from participant results
+          }));
+
+        return {
+          team_id: result.subject_id,
+          team_name: team?.name || 'Unknown Team',
+          team_score: result.calculated_score ?? 0,
+          team_change_percentage: calcData.value_change_percentage ?? 0,
+          rank: result.rank ?? 0,
+          member_count: calcData.member_count ?? members.length,
+          members,
+        };
+      });
+
+      return teamStandings;
+    } catch (error) {
+      console.error('Error fetching team standings:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Get team leaderboard data with competition details
+   */
+  async getTeamLeaderboard(competitionId: string) {
+    try {
+      const supabase = createBrowserClient();
+
+      const [teamStandings, competitionResult] = await Promise.all([
+        this.getTeamStandings(competitionId),
+        supabase
+          .from('competitions')
+          .select('*')
+          .eq('id', competitionId)
+          .single()
+      ]);
+
+      if (competitionResult.error) throw competitionResult.error;
+      const competition = competitionResult.data;
+
+      return {
+        competition,
+        teams: teamStandings,
+        isCalculated: teamStandings.length > 0,
+      };
+    } catch (error) {
+      console.error('Error fetching team leaderboard:', error);
       throw error;
     }
   },
