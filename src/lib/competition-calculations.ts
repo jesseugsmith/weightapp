@@ -24,6 +24,9 @@ export interface Competition {
   goal_value?: number;
   name?: string;
   allow_manual_activities?: boolean;
+  // Team V2 fields
+  max_teams?: number;
+  max_users_per_team?: number;
 }
 
 export interface Participant {
@@ -77,6 +80,8 @@ export async function calculateCompetition(
       return await calculateIndividualCompetition(competitionId, competition, supabase);
     case 'team':
       return await calculateTeamCompetition(competitionId, competition, supabase);
+    case 'team_v2':
+      return await calculateTeamV2Competition(competitionId, competition, supabase);
     case 'collaborative':
       return await calculateCollaborativeCompetition(competitionId, competition, supabase);
     default:
@@ -422,6 +427,182 @@ async function calculateTeamCompetition(
     success: true,
     message: `Team competition recalculated: ${validParticipantResults.length} participants, ${teamResults.length} teams`,
     updated_count: validParticipantResults.length + teamResults.length,
+  };
+}
+
+// ============================================================================
+// TEAM V2 COMPETITION CALCULATION
+// Uses competition_teams and competition_team_members tables
+// Scoring: Weight = total lbs lost, Steps = total steps (all summed)
+// ============================================================================
+
+async function calculateTeamV2Competition(
+  competitionId: string,
+  competition: Competition,
+  supabase: any
+): Promise<CalculationResult> {
+  const startTime = Date.now();
+
+  console.log(
+    `📊 Team V2 Competition: ${competition.name} (${competition.activity_type})`
+  );
+
+  // Get all active teams with their members
+  const { data: teams, error: teamsError } = await supabase
+    .from('competition_teams')
+    .select(`
+      *,
+      members:competition_team_members(*)
+    `)
+    .eq('competition_id', competitionId)
+    .eq('is_active', true);
+
+  if (teamsError) {
+    throw new Error(`Failed to fetch teams: ${teamsError.message}`);
+  }
+
+  if (!teams || teams.length === 0) {
+    return {
+      success: true,
+      message: 'No active teams found',
+      updated_count: 0,
+    };
+  }
+
+  console.log(`👥 Found ${teams.length} active teams`);
+
+  // Calculate date range
+  const startDateRaw = competition.actual_start_date || competition.start_date;
+  const endDateRaw = competition.actual_end_date || competition.end_date;
+  
+  const startDate = startDateRaw ? new Date(startDateRaw).toISOString().split('T')[0] : null;
+  const endDate = endDateRaw ? new Date(endDateRaw).toISOString().split('T')[0] : null;
+
+  console.log(`📅 Competition date range: ${startDate} to ${endDate || 'no end'}`);
+
+  let totalMembersUpdated = 0;
+  let totalTeamsUpdated = 0;
+
+  // Calculate scores for each team
+  for (const team of teams) {
+    let teamTotalScore = 0;
+    const activeMembers = (team.members || []).filter((m: any) => m.is_active);
+
+    console.log(`🏆 Processing team: ${team.name} (${activeMembers.length} active members)`);
+
+    for (const member of activeMembers) {
+      let memberScore = 0;
+      let startingValue: number | null = null;
+      let currentValue: number | null = null;
+
+      if (competition.activity_type === 'weight') {
+        // WEIGHT: Calculate total pounds lost (first entry - last entry)
+        const activities = await getParticipantActivities(
+          member.user_id,
+          'weight',
+          startDate!,
+          endDate,
+          supabase,
+          true
+        );
+
+        if (activities.length >= 1) {
+          startingValue = activities[0].value;
+          currentValue = activities[activities.length - 1].value;
+          
+          if (activities.length >= 2) {
+            // Weight lost = starting weight - current weight (positive = lost weight)
+            memberScore = startingValue - currentValue;
+          }
+          
+          console.log(`  👤 Member ${member.user_id}: ${activities.length} weight entries, score: ${memberScore.toFixed(2)} lbs lost`);
+        }
+      } else if (competition.activity_type === 'steps') {
+        // STEPS: Calculate total steps (sum of all entries)
+        const activities = await getParticipantActivities(
+          member.user_id,
+          'steps',
+          startDate!,
+          endDate,
+          supabase,
+          true
+        );
+
+        if (activities.length > 0) {
+          memberScore = activities.reduce((sum, a) => sum + (a.value || 0), 0);
+          startingValue = 0;
+          currentValue = memberScore;
+          
+          console.log(`  👤 Member ${member.user_id}: ${activities.length} step entries, total: ${memberScore} steps`);
+        }
+      }
+
+      // Update member score in competition_team_members
+      const { error: updateMemberError } = await supabase
+        .from('competition_team_members')
+        .update({
+          individual_score: memberScore,
+          starting_value: startingValue,
+          current_value: currentValue,
+          contribution_value: memberScore,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', member.id);
+
+      if (updateMemberError) {
+        console.error(`❌ Error updating member ${member.id}:`, updateMemberError);
+      } else {
+        totalMembersUpdated++;
+      }
+
+      teamTotalScore += memberScore;
+    }
+
+    // Update team total score in competition_teams
+    const { error: updateTeamError } = await supabase
+      .from('competition_teams')
+      .update({
+        total_score: teamTotalScore,
+        member_count: activeMembers.length,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', team.id);
+
+    if (updateTeamError) {
+      console.error(`❌ Error updating team ${team.id}:`, updateTeamError);
+    } else {
+      totalTeamsUpdated++;
+      console.log(`  ✅ Team ${team.name}: total score = ${teamTotalScore}`);
+    }
+  }
+
+  // Update team ranks (higher score = better rank for both weight loss and steps)
+  const { data: rankedTeams, error: rankError } = await supabase
+    .from('competition_teams')
+    .select('id, total_score')
+    .eq('competition_id', competitionId)
+    .eq('is_active', true)
+    .order('total_score', { ascending: false });
+
+  if (!rankError && rankedTeams) {
+    for (let i = 0; i < rankedTeams.length; i++) {
+      await supabase
+        .from('competition_teams')
+        .update({ rank: i + 1 })
+        .eq('id', rankedTeams[i].id);
+    }
+    console.log(`📊 Updated ranks for ${rankedTeams.length} teams`);
+  }
+
+  const calculationTime = Date.now() - startTime;
+  console.log(
+    `✅ Team V2 competition calculated: ${totalTeamsUpdated} teams, ${totalMembersUpdated} members (${calculationTime}ms)`
+  );
+
+  return {
+    success: true,
+    message: `Team V2 competition recalculated: ${totalTeamsUpdated} teams, ${totalMembersUpdated} members`,
+    updated_count: totalTeamsUpdated + totalMembersUpdated,
   };
 }
 

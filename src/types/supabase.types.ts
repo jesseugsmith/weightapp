@@ -59,9 +59,18 @@ export interface Competition {
   created_by: string;
   status: 'draft' | 'started' | 'completed' | 'cancelled';
   competition_type: 'weight_loss' | 'weight_gain' | 'body_fat_loss' | 'muscle_gain' | null;
+  competition_mode: 'individual' | 'team' | 'team_v2' | 'collaborative';
+  activity_type: 'weight' | 'steps' | 'body_fat' | 'muscle_mass' | 'distance' | 'calories';
+  scoring_method: string;
+  ranking_direction: 'asc' | 'desc';
   max_participants: number | null;
   entry_fee: number | null;
   days_left?: number; // Calculated field from DB view/function, not stored
+  // Team V2 specific fields
+  max_teams: number | null;
+  max_users_per_team: number | null;
+  public: boolean;
+  join_code: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -161,6 +170,74 @@ export interface UserRole {
   expires_at: string | null;
 }
 
+// ============================================================================
+// Team V2 Competition Types
+// ============================================================================
+
+export interface CompetitionTeam {
+  id: string;
+  competition_id: string;
+  captain_user_id: string;
+  name: string;
+  team_code: string;
+  avatar: string | null;
+  total_score: number;
+  rank: number | null;
+  member_count: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CompetitionTeamMember {
+  id: string;
+  competition_team_id: string;
+  user_id: string;
+  individual_score: number;
+  starting_value: number | null;
+  current_value: number | null;
+  contribution_value: number;
+  joined_at: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CompetitionChatMessage {
+  id: string;
+  competition_id: string;
+  team_id: string | null; // null = competition-wide chat
+  user_id: string;
+  message: string;
+  message_type: 'message' | 'system' | 'announcement';
+  edited_at: string | null;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// Team V2 Relations
+export interface CompetitionTeamWithMembers extends CompetitionTeam {
+  captain?: Profile;
+  members?: CompetitionTeamMemberWithUser[];
+  competition?: Competition;
+}
+
+export interface CompetitionTeamMemberWithUser extends CompetitionTeamMember {
+  user?: Profile;
+  team?: CompetitionTeam;
+}
+
+export interface CompetitionChatMessageWithUser extends CompetitionChatMessage {
+  user?: Profile;
+  team?: { name: string; team_code: string } | null;
+}
+
+// Team V2 Create/Update Types
+export type CompetitionTeamCreate = Omit<CompetitionTeam, 'id' | 'total_score' | 'rank' | 'member_count' | 'created_at' | 'updated_at'>;
+export type CompetitionTeamMemberCreate = Omit<CompetitionTeamMember, 'id' | 'individual_score' | 'contribution_value' | 'created_at' | 'updated_at'>;
+export type CompetitionChatMessageCreate = Omit<CompetitionChatMessage, 'id' | 'edited_at' | 'deleted_at' | 'created_at' | 'updated_at'>;
+
 // Database type definition
 export interface Database {
   public: {
@@ -219,6 +296,22 @@ export interface Database {
         Row: UserRole;
         Insert: Omit<UserRole, 'id' | 'assigned_at'>;
         Update: Partial<Omit<UserRole, 'id' | 'user_id'>>;
+      };
+      // Team V2 Tables
+      competition_teams: {
+        Row: CompetitionTeam;
+        Insert: CompetitionTeamCreate;
+        Update: Partial<CompetitionTeam>;
+      };
+      competition_team_members: {
+        Row: CompetitionTeamMember;
+        Insert: CompetitionTeamMemberCreate;
+        Update: Partial<CompetitionTeamMember>;
+      };
+      competition_chat_messages: {
+        Row: CompetitionChatMessage;
+        Insert: CompetitionChatMessageCreate;
+        Update: Partial<CompetitionChatMessage>;
       };
     };
     Views: {
