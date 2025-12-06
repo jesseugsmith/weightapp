@@ -2,13 +2,6 @@
   "version": 2,
   "framework": "nextjs",
   "crons": [
-    {
-      "path": "/api/cron/daily-reminders",
-      "schedule": "*/2 * * * *"
-    },
-    {
-      "path": "/api/cron/process-notifications",
-      "schedule": "*/2 * * * *"
-    }
+   
   ]
 }
