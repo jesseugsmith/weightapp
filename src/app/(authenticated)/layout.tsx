@@ -11,9 +11,7 @@ import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/s
 import { Separator } from '@radix-ui/react-separator';
 import { usePathname } from "next/navigation"
 import { useMemo } from "react"
-import NotificationInbox from '@/components/NotificationInbox';
 import { Toaster } from '@/components/ui/sonner';
-import { useNovuPush } from '@/hooks/useNovuPush';
 export default function AuthenticatedLayout({
   children,
 }: {
@@ -24,8 +22,6 @@ export default function AuthenticatedLayout({
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-
-  useNovuPush();
   const breadcrumbs = useMemo(() => {
     const segments = pathname.split('/').filter(Boolean);
     
@@ -89,9 +85,6 @@ export default function AuthenticatedLayout({
                 ))}
               </BreadcrumbList>
             </Breadcrumb>
-          </div>
-          <div className="flex items-center">
-            <NotificationInbox subscriberId={user?.id || 'guest-user'} />
           </div>
         </header>
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
