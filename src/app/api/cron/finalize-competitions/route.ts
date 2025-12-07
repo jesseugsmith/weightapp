@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { processOneSignalQueue } from '@/lib/notifications/onesignalQueue';
 
 /**
  * Finalize expired competitions
@@ -152,25 +153,14 @@ async function finalizeExpiredCompetitions() {
     }
   }
 
-  // Trigger OneSignal queue processor to send push notifications
+  // Process OneSignal queue directly to send push notifications
   try {
-    const onesignalResponse = await fetch(
-      `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/onesignal/process-queue`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.CRON_SECRET}`,
-        },
-      }
+    const queueResult = await processOneSignalQueue({ supabaseClient: supabaseAdmin });
+    console.log(
+      `📤 OneSignal queue processed: ${queueResult.sent} sent, ${queueResult.skipped} skipped, ${queueResult.failed} failed`
     );
-
-    if (onesignalResponse.ok) {
-      console.log('📤 OneSignal queue processor triggered successfully');
-    } else {
-      console.warn('⚠️ Failed to trigger OneSignal queue processor:', await onesignalResponse.text());
-    }
   } catch (error) {
-    console.warn('⚠️ Error triggering OneSignal queue processor:', error);
+    console.warn('⚠️ Error processing OneSignal queue:', error);
   }
 
   console.log(`\n✅ Job complete: ${completedCompetitions.length} finalized, ${notificationResults.sent} notifications sent`);

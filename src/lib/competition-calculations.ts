@@ -40,6 +40,7 @@ export interface Participant {
 export interface ActivityEntry {
   value: number;
   date: string;
+  date_only?: string | null;
   deleted_at: string | null;
 }
 
@@ -138,25 +139,55 @@ async function calculateIndividualCompetition(
 
   console.log(`📅 Competition date range: ${startDate} to ${endDate || 'no end'}`);
 
+  const existingParticipantStarts = await getExistingStartingValues(
+    competitionId,
+    participants.map((p) => p.id),
+    supabase
+  );
+
   // Calculate scores for each participant
   const calculationResults = await Promise.all(
     participants.map(async (participant: Participant) => {
-      const activities = await getParticipantActivities(
+      const baselineActivity =
+        competition.activity_type === 'weight'
+          ? await getBaselineActivity(
+              participant.user_id,
+              competition.activity_type,
+              supabase,
+              competition.allow_manual_activities ?? true
+            )
+          : null;
+
+      const activities = includeBaselineActivity(
+        await getParticipantActivities(
         participant.user_id,
         competition.activity_type,
         startDate!,
         endDate,
         supabase,
         competition.allow_manual_activities ?? true
+        ),
+        baselineActivity
       );
       
       console.log(`📊 Participant ${participant.user_id}: Found ${activities.length} activities`);
 
       if (activities.length === 0) {
-        return createZeroScoreResult(competitionId, participant.id, competition.scoring_method);
+        const existingStartingValue = existingParticipantStarts.get(participant.id);
+        return createZeroScoreResult(
+          competitionId,
+          participant.id,
+          competition.scoring_method,
+          existingStartingValue
+        );
       }
 
       const metrics = calculateMetrics(activities);
+      const existingStartingValue = existingParticipantStarts.get(participant.id);
+      const startingValue =
+        existingStartingValue !== undefined && existingStartingValue !== null
+          ? existingStartingValue
+          : metrics.firstValue;
       const calculatedScore = calculateScore(metrics, competition.scoring_method);
 
       return {
@@ -166,13 +197,13 @@ async function calculateIndividualCompetition(
         calculated_score: calculatedScore,
         calculation_method: competition.scoring_method,
         calculation_data: {
-          starting_value: metrics.firstValue,
+          starting_value: startingValue,
           current_value: metrics.lastValue,
-          value_change: metrics.lastValue - metrics.firstValue,
+          value_change: metrics.lastValue - startingValue,
           value_change_percentage:
-            metrics.firstValue === 0
+            startingValue === 0
               ? 0
-              : ((metrics.lastValue - metrics.firstValue) / metrics.firstValue) * 100,
+              : ((metrics.lastValue - startingValue) / startingValue) * 100,
           best_value: metrics.bestValue,
           average_value: metrics.averageValue,
           total_value: metrics.totalValue,
@@ -273,23 +304,53 @@ async function calculateTeamCompetition(
   const startDate = startDateRaw ? new Date(startDateRaw).toISOString().split('T')[0] : null;
   const endDate = endDateRaw ? new Date(endDateRaw).toISOString().split('T')[0] : null;
 
+  const existingParticipantStarts = await getExistingStartingValues(
+    competitionId,
+    participants.map((p) => p.id),
+    supabase
+  );
+
   // Step 1: Calculate individual participant scores
   const participantResults = await Promise.all(
     participants.map(async (participant: Participant) => {
-      const activities = await getParticipantActivities(
+      const baselineActivity =
+        competition.activity_type === 'weight'
+          ? await getBaselineActivity(
+              participant.user_id,
+              competition.activity_type,
+              supabase,
+              competition.allow_manual_activities ?? true
+            )
+          : null;
+
+      const activities = includeBaselineActivity(
+        await getParticipantActivities(
         participant.user_id,
         competition.activity_type,
         startDate!,
         endDate,
         supabase,
         competition.allow_manual_activities ?? true
+        ),
+        baselineActivity
       );
       
       if (activities.length === 0) {
+        const existingStartingValue = existingParticipantStarts.get(participant.id);
         return {
-          ...createZeroScoreResult(competitionId, participant.id, competition.scoring_method),
+          ...createZeroScoreResult(
+            competitionId,
+            participant.id,
+            competition.scoring_method,
+            existingStartingValue
+          ),
           calculation_data: {
-            ...createZeroScoreResult(competitionId, participant.id, competition.scoring_method)
+            ...createZeroScoreResult(
+              competitionId,
+              participant.id,
+              competition.scoring_method,
+              existingStartingValue
+            )
               .calculation_data,
             team_id: participant.team_id,
           },
@@ -297,6 +358,11 @@ async function calculateTeamCompetition(
       }
 
       const metrics = calculateMetrics(activities);
+      const existingStartingValue = existingParticipantStarts.get(participant.id);
+      const startingValue =
+        existingStartingValue !== undefined && existingStartingValue !== null
+          ? existingStartingValue
+          : metrics.firstValue;
       const calculatedScore = calculateScore(metrics, competition.scoring_method);
 
       return {
@@ -307,9 +373,9 @@ async function calculateTeamCompetition(
         calculation_method: competition.scoring_method,
         calculation_data: {
           team_id: participant.team_id,
-          starting_value: metrics.firstValue,
+          starting_value: startingValue,
           current_value: metrics.lastValue,
-          value_change: metrics.lastValue - metrics.firstValue,
+          value_change: metrics.lastValue - startingValue,
           best_value: metrics.bestValue,
           average_value: metrics.averageValue,
           total_value: metrics.totalValue,
@@ -497,13 +563,22 @@ async function calculateTeamV2Competition(
 
       if (competition.activity_type === 'weight') {
         // WEIGHT: Calculate total pounds lost (first entry - last entry)
-        const activities = await getParticipantActivities(
+        const baselineActivity = await getBaselineActivity(
           member.user_id,
           'weight',
-          startDate!,
-          endDate,
           supabase,
           true
+        );
+        const activities = includeBaselineActivity(
+          await getParticipantActivities(
+            member.user_id,
+            'weight',
+            startDate!,
+            endDate,
+            supabase,
+            true
+          ),
+          baselineActivity
         );
 
         if (activities.length >= 1) {
@@ -919,6 +994,96 @@ async function getParticipantActivities(
   return validActivities;
 }
 
+async function getBaselineActivity(
+  userId: string,
+  activityType: string,
+  supabase: any,
+  allowManualActivities: boolean = true
+): Promise<ActivityEntry | null> {
+  let query = supabase
+    .from('activity_entries')
+    .select('value, date, date_only, deleted_at, source')
+    .eq('user_id', userId)
+    .eq('activity_type', activityType)
+    .is('deleted_at', null)
+    .order('date', { ascending: true })
+    .limit(1);
+
+  if (!allowManualActivities) {
+    query = query.neq('source', 'manual');
+  }
+
+  const { data, error } = await query;
+
+  if (error || !data || data.length === 0) {
+    return null;
+  }
+
+  return data[0] as ActivityEntry;
+}
+
+function includeBaselineActivity(
+  activities: ActivityEntry[],
+  baseline: ActivityEntry | null
+): ActivityEntry[] {
+  if (!baseline) {
+    return activities;
+  }
+
+  if (activities.length === 0) {
+    return [baseline];
+  }
+
+  const firstDate = activities[0].date_only || activities[0].date;
+  const baselineDate = baseline.date_only || baseline.date;
+
+  if (!firstDate || !baselineDate) {
+    return activities;
+  }
+
+  if (baselineDate < firstDate) {
+    const alreadyIncluded =
+      activities[0].value === baseline.value &&
+      (activities[0].date_only || activities[0].date) === baselineDate;
+
+    return alreadyIncluded ? activities : [baseline, ...activities];
+  }
+
+  return activities;
+}
+
+async function getExistingStartingValues(
+  competitionId: string,
+  subjectIds: string[],
+  supabase: any
+): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
+
+  if (!subjectIds || subjectIds.length === 0) {
+    return result;
+  }
+
+  const { data, error } = await supabase
+    .from('calculation_results')
+    .select('subject_id, calculation_data')
+    .eq('competition_id', competitionId)
+    .eq('subject_type', 'participant')
+    .in('subject_id', subjectIds);
+
+  if (error || !data) {
+    return result;
+  }
+
+  for (const row of data) {
+    const startingValue = row?.calculation_data?.starting_value;
+    if (startingValue !== undefined && startingValue !== null) {
+      result.set(row.subject_id, startingValue);
+    }
+  }
+
+  return result;
+}
+
 function calculateMetrics(activities: ActivityEntry[]): {
   firstValue: number;
   lastValue: number;
@@ -970,8 +1135,14 @@ function calculateScore(
 function createZeroScoreResult(
   competitionId: string,
   participantId: string,
-  scoringMethod: string
+  scoringMethod: string,
+  existingStartingValue?: number | null
 ): any {
+  const startingValue =
+    existingStartingValue !== undefined && existingStartingValue !== null
+      ? existingStartingValue
+      : 0;
+
   return {
     competition_id: competitionId,
     subject_type: 'participant',
@@ -979,8 +1150,8 @@ function createZeroScoreResult(
     calculated_score: 0,
     calculation_method: scoringMethod,
     calculation_data: {
-      starting_value: 0,
-      current_value: 0,
+      starting_value: startingValue,
+      current_value: startingValue,
       value_change: 0,
       value_change_percentage: 0,
       best_value: 0,
