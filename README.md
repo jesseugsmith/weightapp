@@ -349,7 +349,7 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
    - Weight logging
 
 3. Monitor:
-   - Set up error tracking (e.g., Sentry)
+   - Set up error tracking
    - Configure logging
    - Set up uptime monitoring
 

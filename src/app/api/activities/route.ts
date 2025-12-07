@@ -30,18 +30,35 @@ export async function POST(req: NextRequest) {
     contentType: req.headers.get('content-type'),
     userAgent: req.headers.get('user-agent'),
   });
+
+  // Hoist env and auth state so catch can reference them safely
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  let userId: string | null = null;
+  let apiToken: any = null;
+  
+  if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceRoleKey) {
+    console.error('❌ Missing Supabase env vars', {
+      hasUrl: !!supabaseUrl,
+      hasAnonKey: !!supabaseAnonKey,
+      hasServiceRoleKey: !!supabaseServiceRoleKey,
+    });
+    return NextResponse.json(
+      { error: 'Server misconfigured: Supabase keys are required' },
+      { status: 500 }
+    );
+  }
   
   try {
     // Initialize Supabase client with service role for admin operations
     const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
+      supabaseUrl,
+      supabaseServiceRoleKey
     );
 
     // Try API token auth first, then Supabase session token, then session cookie
     const authHeader = req.headers.get('authorization');
-    let userId: string | null = null;
-    let apiToken: any = null;
 
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
