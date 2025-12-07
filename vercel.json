@@ -13,10 +13,6 @@
     {
       "path": "/api/cron/daily-reminders",
       "schedule": "0 7 * * *"
-    },
-    {
-      "path": "/api/onesignal/process-queue",
-      "schedule": "*/5 * * * *"
     }
   ]
 }
