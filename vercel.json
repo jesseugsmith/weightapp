@@ -2,6 +2,13 @@
   "version": 2,
   "framework": "nextjs",
   "crons": [
-   
+    {
+      "path": "/api/cron/start-competitions",
+      "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/finalize-competitions",
+      "schedule": "0 1 * * *"
+    }
   ]
 }
