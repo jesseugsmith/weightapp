@@ -4,6 +4,28 @@ import { createClient } from '@supabase/supabase-js';
 import { log401, getRequestContext, getEnvStatus, sanitizeRequestBody } from '@/lib/apiLogger';
 
 /**
+ * CORS headers for API responses
+ */
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+/**
+ * Handle CORS preflight requests
+ */
+export async function OPTIONS(request: NextRequest) {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      ...corsHeaders,
+      'Access-Control-Max-Age': '86400',
+    },
+  });
+}
+
+/**
  * POST /api/novu/mobile/register-subscriber
  * Register subscriber for mobile app
  * 
@@ -45,7 +67,10 @@ export async function POST(request: NextRequest) {
       });
       return NextResponse.json(
         { error: 'Missing or invalid authorization header' },
-        { status: 401 }
+        { 
+          status: 401,
+          headers: corsHeaders,
+        }
       );
     }
 
@@ -69,7 +94,10 @@ export async function POST(request: NextRequest) {
       });
       return NextResponse.json(
         { error: 'Server configuration error' },
-        { status: 500 }
+        { 
+          status: 500,
+          headers: corsHeaders,
+        }
       );
     }
     
@@ -99,7 +127,10 @@ export async function POST(request: NextRequest) {
       });
       return NextResponse.json(
         { error: 'Unauthorized' },
-        { status: 401 }
+        { 
+          status: 401,
+          headers: corsHeaders,
+        }
       );
     }
     const { email, firstName, lastName, phone } = body;
@@ -119,7 +150,10 @@ export async function POST(request: NextRequest) {
       console.error('❌ Failed to register subscriber:', result.error);
       return NextResponse.json(
         { error: result.error },
-        { status: 500 }
+        { 
+          status: 500,
+          headers: corsHeaders,
+        }
       );
     }
 
@@ -129,16 +163,21 @@ export async function POST(request: NextRequest) {
       success: true,
       message: 'Subscriber registered successfully',
       subscriberId: user.id,
+    }, {
+      headers: corsHeaders,
     });
   } catch (error) {
     console.error('❌ Error in mobile register-subscriber:', error);
-    return NextResponse.json(
-      {
-        error: 'Internal server error',
-        details: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
+      return NextResponse.json(
+        {
+          error: 'Internal server error',
+          details: error instanceof Error ? error.message : 'Unknown error',
+        },
+        { 
+          status: 500,
+          headers: corsHeaders,
+        }
+      );
   }
 }
 
