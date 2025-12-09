@@ -43,6 +43,21 @@ export async function OPTIONS(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
+    // Log ALL headers for debugging (especially to detect Cloudflare stripping)
+    const allHeaders: Record<string, string> = {};
+    request.headers.forEach((value, key) => {
+      allHeaders[key] = key.toLowerCase() === 'authorization' 
+        ? value.substring(0, 20) + '...' 
+        : value;
+    });
+    console.log('📋 All incoming headers:', JSON.stringify(allHeaders, null, 2));
+    console.log('🔍 Cloudflare headers:', {
+      cfRay: request.headers.get('cf-ray'),
+      cfConnectingIp: request.headers.get('cf-connecting-ip'),
+      cfVisitor: request.headers.get('cf-visitor'),
+      via: request.headers.get('via'),
+    });
+
     // Parse body first for logging
     let body: any = {};
     let sanitizedBody: any = {};
@@ -101,15 +116,66 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: {
-        headers: {
-          Authorization: `Bearer ${token}`,
+    let supabase;
+    try {
+      supabase = createClient(supabaseUrl, supabaseAnonKey, {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
         },
-      },
-    });
+      });
+    } catch (clientError) {
+      console.error('❌ Error creating Supabase client:', clientError);
+      log401({
+        ...getRequestContext(request, '/api/novu/mobile/register-subscriber'),
+        authMethod: 'supabase_token',
+        reason: 'Failed to create Supabase client',
+        requestBody: sanitizedBody,
+        env: getEnvStatus(),
+        tokenPreview: token.substring(0, 10) + '...',
+        error: clientError instanceof Error ? {
+          message: clientError.message,
+          name: clientError.name
+        } : String(clientError)
+      });
+      return NextResponse.json(
+        { error: 'Authentication service error' },
+        { 
+          status: 500,
+          headers: corsHeaders,
+        }
+      );
+    }
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    let user, authError;
+    try {
+      const authResult = await supabase.auth.getUser();
+      user = authResult.data.user;
+      authError = authResult.error;
+    } catch (getUserError) {
+      console.error('❌ Exception calling supabase.auth.getUser():', getUserError);
+      log401({
+        ...getRequestContext(request, '/api/novu/mobile/register-subscriber'),
+        authMethod: 'supabase_token',
+        reason: 'Exception during Supabase auth',
+        requestBody: sanitizedBody,
+        env: getEnvStatus(),
+        tokenPreview: token.substring(0, 10) + '...',
+        error: getUserError instanceof Error ? {
+          message: getUserError.message,
+          name: getUserError.name,
+          stack: getUserError.stack
+        } : String(getUserError)
+      });
+      return NextResponse.json(
+        { error: 'Authentication failed' },
+        { 
+          status: 401,
+          headers: corsHeaders,
+        }
+      );
+    }
 
     if (authError || !user) {
       log401({
@@ -136,20 +202,48 @@ export async function POST(request: NextRequest) {
     const { email, firstName, lastName, phone } = body;
 
     console.log('📱 Mobile app: Registering subscriber', user.id);
+    console.log('📋 Subscriber data:', { 
+      userId: user.id, 
+      email: email || user.email, 
+      firstName, 
+      lastName, 
+      phone 
+    });
 
     // Register subscriber with Novu
-    const result = await NovuService.identifySubscriber(
-      user.id,
-      email || user.email,
-      firstName,
-      lastName,
-      phone
-    );
+    let result;
+    try {
+      console.log('🔔 Calling NovuService.identifySubscriber...');
+      result = await NovuService.identifySubscriber(
+        user.id,
+        email || user.email,
+        firstName,
+        lastName,
+        phone
+      );
+      console.log('✅ NovuService.identifySubscriber completed:', { success: result.success });
+    } catch (novuError) {
+      console.error('❌ Exception calling NovuService.identifySubscriber:', novuError);
+      console.error('❌ Error stack:', novuError instanceof Error ? novuError.stack : 'No stack');
+      return NextResponse.json(
+        { 
+          error: 'Failed to register subscriber with Novu',
+          details: novuError instanceof Error ? novuError.message : String(novuError)
+        },
+        { 
+          status: 500,
+          headers: corsHeaders,
+        }
+      );
+    }
 
     if (!result.success) {
       console.error('❌ Failed to register subscriber:', result.error);
       return NextResponse.json(
-        { error: result.error },
+        { 
+          error: result.error || 'Failed to register subscriber',
+          details: 'Novu service returned failure'
+        },
         { 
           status: 500,
           headers: corsHeaders,
@@ -168,16 +262,22 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('❌ Error in mobile register-subscriber:', error);
-      return NextResponse.json(
-        {
-          error: 'Internal server error',
-          details: error instanceof Error ? error.message : 'Unknown error',
-        },
-        { 
-          status: 500,
-          headers: corsHeaders,
-        }
-      );
+    console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    console.error('❌ Error details:', {
+      name: error instanceof Error ? error.name : 'Unknown',
+      message: error instanceof Error ? error.message : String(error),
+      cause: error instanceof Error ? error.cause : undefined,
+    });
+    return NextResponse.json(
+      {
+        error: 'Internal server error',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { 
+        status: 500,
+        headers: corsHeaders,
+      }
+    );
   }
 }
 

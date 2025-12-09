@@ -47,6 +47,14 @@ export class NovuService {
     try {
       const novu = this.getClient();
 
+      console.log('🔔 Calling Novu API to create/update subscriber:', {
+        subscriberId,
+        hasEmail: !!email,
+        hasFirstName: !!firstName,
+        hasLastName: !!lastName,
+        hasPhone: !!phone,
+      });
+
       await novu.subscribers.create({
         subscriberId,
         email,
@@ -60,6 +68,15 @@ export class NovuService {
       return { success: true };
     } catch (error) {
       console.error('❌ Error creating/updating subscriber:', error);
+      console.error('❌ Error details:', {
+        name: error instanceof Error ? error.name : 'Unknown',
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        // Try to extract more details if it's an API error
+        response: (error as any)?.response ? JSON.stringify((error as any).response) : undefined,
+        status: (error as any)?.status,
+        statusText: (error as any)?.statusText,
+      });
       return {
         success: false,
         error: error instanceof Error ? error.message : JSON.stringify(error),

@@ -3,6 +3,28 @@ import { NovuService } from '@/lib/services/novu-service';
 import { createClient } from '@supabase/supabase-js';
 
 /**
+ * CORS headers for API responses
+ */
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+/**
+ * Handle CORS preflight requests
+ */
+export async function OPTIONS(request: NextRequest) {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      ...corsHeaders,
+      'Access-Control-Max-Age': '86400',
+    },
+  });
+}
+
+/**
  * POST /api/novu/mobile/register-push
  * Register Expo push token with Novu (no database storage)
  * 
@@ -26,7 +48,10 @@ export async function POST(request: NextRequest) {
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return NextResponse.json(
         { error: 'Missing or invalid authorization header' },
-        { status: 401 }
+        { 
+          status: 401,
+          headers: corsHeaders,
+        }
       );
     }
 
@@ -50,7 +75,10 @@ export async function POST(request: NextRequest) {
       console.error('❌ Authentication failed:', authError);
       return NextResponse.json(
         { error: 'Unauthorized' },
-        { status: 401 }
+        { 
+          status: 401,
+          headers: corsHeaders,
+        }
       );
     }
 
@@ -61,7 +89,10 @@ export async function POST(request: NextRequest) {
     if (!pushToken) {
       return NextResponse.json(
         { error: 'pushToken is required' },
-        { status: 400 }
+        { 
+          status: 400,
+          headers: corsHeaders,
+        }
       );
     }
 
@@ -101,6 +132,8 @@ export async function POST(request: NextRequest) {
           message: 'Expo push token received but Expo integration not configured in Novu',
           warning: 'Configure Expo Push integration in Novu dashboard to enable push notifications',
           subscriberId: user.id,
+        }, {
+          headers: corsHeaders,
         });
       }
 
@@ -111,7 +144,10 @@ export async function POST(request: NextRequest) {
           error: result.error || 'Failed to register push token with Novu',
           details: 'Check Novu dashboard for Expo integration configuration'
         },
-        { status: 500 }
+        { 
+          status: 500,
+          headers: corsHeaders,
+        }
       );
     }
 
@@ -121,6 +157,8 @@ export async function POST(request: NextRequest) {
       success: true,
       message: 'Expo push token registered successfully with Novu',
       subscriberId: user.id,
+    }, {
+      headers: corsHeaders,
     });
   } catch (error) {
     console.error('❌ Error in mobile register-push:', error);
@@ -129,7 +167,10 @@ export async function POST(request: NextRequest) {
         error: 'Internal server error',
         details: error instanceof Error ? error.message : 'Unknown error',
       },
-      { status: 500 }
+      { 
+        status: 500,
+        headers: corsHeaders,
+      }
     );
   }
 }
