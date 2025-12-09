@@ -20,6 +20,8 @@ import {
   CloudLightning,
   Key,
   MessageCircle,
+  Flame,
+  Bell,
 } from "lucide-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -73,7 +75,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     const router = useRouter();
     const pathname = usePathname();
     const { user, signOut } = useAuth();
-    const { hasPermission, hasRole } = usePermissions();
+    const { hasPermission, hasRole, isAdmin } = usePermissions();
     const [isLogActivityModalOpen, setIsLogActivityModalOpen] = React.useState(false);
     const [profile, setProfile] = useState<Profile | null>(null);
     const supabase = createBrowserClient();
@@ -99,7 +101,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     }, [user?.id, supabase]);
     
     // Check if user has any admin permissions
-    const hasAdminAccess = hasPermission('manage_users') || 
+    const hasAdminAccess = isAdmin ||
+                           hasPermission('manage_users') || 
                            hasPermission('manage_roles') || 
                            hasPermission('manage_admins') ||
                            hasPermission('manage_invites') ||
@@ -130,6 +133,18 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           items: [],
         },
         {
+          title: "Matchmaking",
+          url: "/matchmaking",
+          icon: CloudLightning,
+          items: [],
+        },
+        {
+          title: "Activity Feed",
+          url: "/activity-feed",
+          icon: Flame,
+          items: [],
+        },
+        {
           title: "Messages",
           url: "/messaging",
           icon: MessageCircle,
@@ -141,9 +156,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       if (hasAdminAccess) {
         navMain.push({
           title: 'Admin',
-          url: '#',
+          url: '/admin/dashboard',
           icon: Settings2Icon,
           items: [
+            {
+              title: 'Dashboard',
+              url: '/admin/dashboard',
+            },
             {
               title: 'Users',
               url: '/admin/users',
@@ -155,6 +174,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             {
               title: 'Audit Logs',
               url: '/admin/audit-logs'
+            },
+            {
+              title: 'Settings',
+              url: '/admin/settings'
             }
           ],
         });
@@ -170,6 +193,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         },
         navMain,
         navSecondary: [
+          {
+            title: "Notifications",
+            url: "/notifications",
+            icon: Bell,
+          },
           {
             title: "Log Activity",
             icon: Scale,

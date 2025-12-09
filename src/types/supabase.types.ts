@@ -91,6 +91,19 @@ export interface CompetitionParticipant {
   updated_at: string;
 }
 
+export interface CompetitionIssue {
+  id: string;
+  competition_id: string;
+  reporter_id: string | null;
+  issue_type: string;
+  description: string;
+  status: 'open' | 'in_progress' | 'resolved';
+  resolution_notes: string | null;
+  created_at: string;
+  updated_at: string;
+  resolved_at: string | null;
+}
+
 export interface ApiToken {
   id: string;
   user_id: string;

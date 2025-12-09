@@ -15,15 +15,14 @@ export async function GET(request: NextRequest) {
 
     console.log('🕐 Notification queue processing cron job triggered');
 
-    // Call the main process-queue endpoint
+    // Call the main Novu process-queue endpoint (replaces OneSignal)
     const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
     const response = await fetch(
-      `${baseUrl}/api/onesignal/process-queue?batchSize=50`,
+      `${baseUrl}/api/novu/process-queue?batchSize=50&secret=${process.env.CRON_SECRET}`,
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY || ''}`,
         },
       }
     );

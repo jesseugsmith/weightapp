@@ -27,6 +27,20 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 CREATE INDEX IF NOT EXISTS idx_profiles_id ON public.profiles(id);
 
 -- ============================================================================
+-- ADMIN USERS TABLE
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS public.admin_users (
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
+  created_by UUID REFERENCES auth.users(id),
+  notes TEXT,
+  active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_users_active ON public.admin_users(active);
+
+-- ============================================================================
 -- WEIGHT ENTRIES TABLE
 -- ============================================================================
 
@@ -283,6 +297,7 @@ CREATE INDEX IF NOT EXISTS idx_notifications_unread ON public.notifications(user
 -- ============================================================================
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.admin_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.weight_entries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.activity_entries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.competitions ENABLE ROW LEVEL SECURITY;

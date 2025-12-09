@@ -489,7 +489,32 @@ export async function removePermissionFromRole(
  * Check if current user is admin (has admin or super_admin role)
  */
 export async function isAdmin(): Promise<boolean> {
-  return await hasAnyRole(['admin', 'super_admin']);
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return false;
+
+    // Prefer explicit membership in admin_users
+    const { data: adminRow, error } = await supabase
+      .from('admin_users')
+      .select('user_id, active')
+      .eq('user_id', user.id)
+      .eq('active', true)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error checking admin_users membership:', error);
+    }
+
+    if (adminRow?.user_id) {
+      return true;
+    }
+
+    // Fallback to role-based admin
+    return await hasAnyRole(['admin', 'super_admin']);
+  } catch (err) {
+    console.error('Error determining admin status:', err);
+    return false;
+  }
 }
 
 /**
