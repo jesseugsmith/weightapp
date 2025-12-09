@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { NovuService } from '@/lib/services/novu-service';
 import { createClient } from '@supabase/supabase-js';
+import { log401, getRequestContext, getEnvStatus, sanitizeRequestBody } from '@/lib/apiLogger';
 
 /**
  * POST /api/novu/mobile/register-subscriber
@@ -20,9 +21,28 @@ import { createClient } from '@supabase/supabase-js';
  */
 export async function POST(request: NextRequest) {
   try {
+    // Parse body first for logging
+    let body: any = {};
+    let sanitizedBody: any = {};
+    try {
+      body = await request.json();
+      sanitizedBody = sanitizeRequestBody(body);
+    } catch (e) {
+      // Body parsing failed, continue without it
+    }
+
     // Get Authorization header
     const authHeader = request.headers.get('Authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      log401({
+        ...getRequestContext(request, '/api/novu/mobile/register-subscriber'),
+        authMethod: 'none',
+        reason: 'Missing or invalid Authorization header',
+        requestBody: sanitizedBody,
+        env: getEnvStatus(),
+        hasAuthHeader: !!authHeader,
+        authHeaderFormat: authHeader ? 'Not Bearer' : 'Missing'
+      });
       return NextResponse.json(
         { error: 'Missing or invalid authorization header' },
         { status: 401 }
@@ -35,6 +55,24 @@ export async function POST(request: NextRequest) {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
     
+    if (!supabaseUrl || !supabaseAnonKey) {
+      log401({
+        ...getRequestContext(request, '/api/novu/mobile/register-subscriber'),
+        authMethod: 'supabase_token',
+        reason: 'Missing Supabase environment variables',
+        requestBody: sanitizedBody,
+        env: getEnvStatus(),
+        error: {
+          hasUrl: !!supabaseUrl,
+          hasAnonKey: !!supabaseAnonKey
+        }
+      });
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
+    }
+    
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       global: {
         headers: {
@@ -46,15 +84,24 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     if (authError || !user) {
-      console.error('❌ Authentication failed:', authError);
+      log401({
+        ...getRequestContext(request, '/api/novu/mobile/register-subscriber'),
+        authMethod: 'supabase_token',
+        reason: authError ? `Supabase auth error: ${authError.message}` : 'No user returned from token',
+        requestBody: sanitizedBody,
+        env: getEnvStatus(),
+        tokenPreview: token.substring(0, 10) + '...',
+        error: authError ? {
+          message: authError.message,
+          status: authError.status,
+          name: authError.name
+        } : 'No user object'
+      });
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       );
     }
-
-    // Parse request body
-    const body = await request.json();
     const { email, firstName, lastName, phone } = body;
 
     console.log('📱 Mobile app: Registering subscriber', user.id);

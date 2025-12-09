@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { NovuService } from '@/lib/services/novu-service';
 import { createRouteHandlerClient } from '@/lib/supabaseServer';
+import { log401, getRequestContext, getEnvStatus, sanitizeRequestBody } from '@/lib/apiLogger';
 
 /**
  * POST /api/novu/register-push
@@ -12,18 +13,33 @@ import { createRouteHandlerClient } from '@/lib/supabaseServer';
  */
 export async function POST(request: NextRequest) {
   try {
+    // Parse body first for logging
+    const body = await request.json();
+    const sanitizedBody = sanitizeRequestBody(body);
+
     // Verify authentication
     const supabase = createRouteHandlerClient(request);
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     if (authError || !user) {
+      log401({
+        ...getRequestContext(request, '/api/novu/register-push'),
+        authMethod: 'session',
+        reason: authError ? `Supabase auth error: ${authError.message}` : 'No user returned from session',
+        requestBody: sanitizedBody,
+        env: getEnvStatus(),
+        error: authError ? {
+          message: authError.message,
+          status: authError.status,
+          name: authError.name
+        } : 'No user object',
+        cookies: request.headers.get('cookie') ? 'Present' : 'Missing'
+      });
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       );
     }
-
-    const body = await request.json();
     const { userId, subscription } = body;
 
     // Verify the userId matches the authenticated user

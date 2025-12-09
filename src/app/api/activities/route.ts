@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { createClient } from '@supabase/supabase-js';
 import type { ActivityEntry } from '@/types/supabase.types';
 import { calculateCompetition } from '@/lib/competition-calculations';
+import { log401, getRequestContext, getEnvStatus, sanitizeRequestBody } from '@/lib/apiLogger';
 
 /**
  * POST /api/activities
@@ -24,6 +25,24 @@ import { calculateCompetition } from '@/lib/competition-calculations';
  */
 export async function POST(req: NextRequest) {
   const requestStartTime = Date.now();
+  
+  // Parse body early for logging (but handle errors)
+  let requestBody: any = null;
+  let sanitizedBody: any = null;
+  try {
+    const bodyText = await req.text();
+    requestBody = bodyText ? JSON.parse(bodyText) : null;
+    sanitizedBody = sanitizeRequestBody(requestBody);
+    // Re-create request with body for later use
+    req = new NextRequest(req.url, {
+      method: req.method,
+      headers: req.headers,
+      body: bodyText,
+    });
+  } catch (e) {
+    // Body parsing failed, continue without it
+  }
+  
   console.log('\n🚀 POST /api/activities - Request received');
   console.log('📋 Request headers:', {
     authorization: req.headers.get('authorization') ? 'Present' : 'Missing',
@@ -90,6 +109,15 @@ export async function POST(req: NextRequest) {
       if (!tokenError && tokens) {
         // Check expiration
         if (tokens.expires_at && new Date(tokens.expires_at) < new Date()) {
+          log401({
+            ...getRequestContext(req, '/api/activities'),
+            authMethod: 'api_token',
+            reason: 'API token has expired',
+            requestBody: sanitizedBody,
+            env: getEnvStatus(),
+            tokenPreview: token.substring(0, 10) + '...',
+            error: { expires_at: tokens.expires_at, now: new Date().toISOString() }
+          });
           return NextResponse.json(
             { error: 'API token has expired' },
             { status: 401 }
@@ -124,6 +152,15 @@ export async function POST(req: NextRequest) {
           userId = user.id;
           console.log('✅ Authenticated via Supabase session token');
         } else {
+          log401({
+            ...getRequestContext(req, '/api/activities'),
+            authMethod: 'supabase_token',
+            reason: 'Invalid Supabase session token',
+            requestBody: sanitizedBody,
+            env: getEnvStatus(),
+            tokenPreview: token.substring(0, 10) + '...',
+            error: userError ? { message: userError.message, status: userError.status } : 'No user returned'
+          });
           return NextResponse.json(
             { error: 'Invalid authentication token' },
             { status: 401 }
@@ -174,7 +211,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Parse request body
-    const body = await req.json();
+    // Use already parsed body
+    const body = requestBody;
     console.log('📦 Request body:', body);
     
     const { 
@@ -544,6 +582,15 @@ export async function GET(req: NextRequest) {
         .single();
 
       if (error || !tokens) {
+        log401({
+          ...getRequestContext(req, '/api/activities'),
+          authMethod: 'api_token',
+          reason: error ? `Token lookup error: ${error.message}` : 'Token not found or inactive',
+          requestBody: sanitizedBody,
+          env: getEnvStatus(),
+          tokenPreview: token.substring(0, 10) + '...',
+          error: error ? { message: error.message, code: error.code } : 'No matching token'
+        });
         return NextResponse.json(
           { error: 'Invalid or inactive API token' },
           { status: 401 }
@@ -551,6 +598,15 @@ export async function GET(req: NextRequest) {
       }
 
       if (tokens.expires_at && new Date(tokens.expires_at) < new Date()) {
+        log401({
+          ...getRequestContext(req, '/api/activities'),
+          authMethod: 'api_token',
+          reason: 'API token has expired',
+          requestBody: sanitizedBody,
+          env: getEnvStatus(),
+          tokenPreview: token.substring(0, 10) + '...',
+          error: { expires_at: tokens.expires_at, now: new Date().toISOString() }
+        });
         return NextResponse.json(
           { error: 'API token has expired' },
           { status: 401 }
@@ -561,6 +617,19 @@ export async function GET(req: NextRequest) {
     } else {
       const { data: { user }, error } = await supabase.auth.getUser();
       if (error || !user) {
+        log401({
+          ...getRequestContext(req, '/api/activities'),
+          authMethod: 'session',
+          reason: error ? `Session auth error: ${error.message}` : 'No user in session',
+          requestBody: sanitizedBody,
+          env: getEnvStatus(),
+          error: error ? {
+            message: error.message,
+            status: error.status,
+            name: error.name
+          } : 'No user object',
+          cookies: req.headers.get('cookie') ? 'Present' : 'Missing'
+        });
         return NextResponse.json(
           { error: 'Unauthorized' },
           { status: 401 }

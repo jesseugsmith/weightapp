@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { log401, getRequestContext, logApi, getEnvStatus, sanitizeRequestBody } from '@/lib/apiLogger';
 
 /**
  * CORS headers for API responses
@@ -41,10 +42,18 @@ export async function OPTIONS(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    console.log('🔍 Register endpoint called');
-    
     const body = await request.json();
+    const sanitizedBody = sanitizeRequestBody(body);
     const { email, password, firstName, lastName } = body;
+    
+    const requestContext = getRequestContext(request, '/api/auth/register');
+    logApi({
+      ...requestContext,
+      status: 200,
+      message: 'Registration request received',
+      requestBody: sanitizedBody,
+      env: getEnvStatus()
+    });
 
     // Validate required fields
     if (!email || !password) {
