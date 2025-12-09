@@ -88,7 +88,7 @@ export default function ActivityFeedPage() {
       }
 
       // Fetch posts from users that current user follows
-      const { data: followingPosts: fposts, error: followError } = await supabase
+      const { data: fposts, error: followError } = await supabase
         .from('activity_posts')
         .select(`
           *,
