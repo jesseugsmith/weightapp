@@ -51,7 +51,10 @@ export class NovuService {
       }
 
       const novuApiUrl = process.env.NEXT_PUBLIC_NOVU_BACKEND_URL || 'https://api.novu.co';
-      const url = `${novuApiUrl}/v1/subscribers`;
+      // Correct endpoint: PUT /v1/subscribers/{subscriberId}
+      const url = `${novuApiUrl}/v1/subscribers/${subscriberId}`;
+
+      console.log('🔔 Making direct API call to:', url);
 
       const response = await fetch(url, {
         method: 'PUT', // PUT creates or updates

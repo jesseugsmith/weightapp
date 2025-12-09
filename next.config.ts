@@ -15,6 +15,25 @@ const nextConfig: NextConfig = {
   
   // Explicitly set the output file tracing root to prevent lockfile confusion
   outputFileTracingRoot: __dirname,
+
+  // Fix Novu SDK bundling issues on Vercel
+  webpack: (config, { isServer }) => {
+    if (isServer) {
+      // Ensure @novu/api and its dependencies are bundled correctly
+      config.externals = config.externals || [];
+      
+      // Don't externalize @novu/api - bundle it completely
+      if (Array.isArray(config.externals)) {
+        config.externals = config.externals.filter((external: any) => {
+          if (typeof external === 'string') {
+            return !external.includes('@novu');
+          }
+          return true;
+        });
+      }
+    }
+    return config;
+  },
   
   images: {
     remotePatterns: [
