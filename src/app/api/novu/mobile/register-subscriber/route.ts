@@ -31,8 +31,8 @@ export async function POST(request: NextRequest) {
       // Body parsing failed, continue without it
     }
 
-    // Get Authorization header
-    const authHeader = request.headers.get('Authorization');
+    // Get Authorization header (check both cases)
+    const authHeader = request.headers.get('Authorization') || request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       log401({
         ...getRequestContext(request, '/api/novu/mobile/register-subscriber'),

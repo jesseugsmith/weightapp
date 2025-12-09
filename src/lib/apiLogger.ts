@@ -60,10 +60,21 @@ export function logApi(context: LogContext & { status?: number }) {
  * Extract request context for logging
  */
 export function getRequestContext(request: NextRequest, endpoint: string) {
-  const authHeader = request.headers.get('authorization');
+  // Check both cases for Authorization header
+  const authHeader = request.headers.get('authorization') || request.headers.get('Authorization');
   const tokenPreview = authHeader?.startsWith('Bearer ')
     ? `${authHeader.substring(7, 17)}...` 
     : undefined;
+
+  // Get all headers for debugging (sanitized)
+  const allHeaders: Record<string, string> = {};
+  request.headers.forEach((value, key) => {
+    if (key.toLowerCase() === 'authorization') {
+      allHeaders[key] = value.substring(0, 20) + '...';
+    } else {
+      allHeaders[key] = value;
+    }
+  });
 
   return {
     endpoint,
@@ -74,6 +85,7 @@ export function getRequestContext(request: NextRequest, endpoint: string) {
     tokenPreview,
     userAgent: request.headers.get('user-agent'),
     origin: request.headers.get('origin'),
+    allHeaders: Object.keys(allHeaders), // Just header names for debugging
   };
 }
 
