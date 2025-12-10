@@ -24,30 +24,33 @@ const nextConfig: NextConfig = {
     if (isServer) {
       // Prevent externalizing @novu/api and zod - they must be bundled
       // This preserves Zod's internal structure (_zod) in serverless functions
-      const originalExternals = config.externals;
       
-      config.externals = (context, request, callback) => {
-        // Don't externalize @novu packages or zod
-        if (request && (request.includes('@novu') || request === 'zod' || request.startsWith('zod/'))) {
-          return callback();
-        }
-        
-        // Apply default externalization for other packages
-        if (typeof originalExternals === 'function') {
-          return originalExternals(context, request, callback);
-        }
-        if (Array.isArray(originalExternals)) {
-          for (const external of originalExternals) {
-            if (typeof external === 'function') {
-              const result = external(context, request, callback);
-              if (result !== undefined) return result;
-            } else if (typeof external === 'string' && request === external) {
-              return callback();
-            }
+      // Filter out @novu and zod from externals array
+      if (Array.isArray(config.externals)) {
+        config.externals = config.externals.filter((external: any) => {
+          if (typeof external === 'string') {
+            return !external.includes('@novu') && 
+                   !external.includes('zod');
           }
-        }
-        return callback();
-      };
+          return true;
+        });
+      }
+
+      // If externals is a function, wrap it to exclude @novu and zod
+      if (typeof config.externals === 'function') {
+        const originalExternals = config.externals;
+        config.externals = [
+          // First check: don't externalize @novu or zod
+          ({ request }: { request?: string }, callback: Function) => {
+            if (request && (request.includes('@novu') || request === 'zod' || request.startsWith('zod/'))) {
+              return; // Don't externalize - bundle it
+            }
+            callback(); // Continue to next check
+          },
+          // Then apply original externals
+          originalExternals,
+        ];
+      }
 
       // Ensure Zod resolves to a single instance
       config.resolve = config.resolve || {};
