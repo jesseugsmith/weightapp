@@ -17,8 +17,10 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: __dirname,
 
   // Fix Novu SDK bundling issues on Vercel
-  // Ensure @novu/api and Zod are properly bundled for serverless functions
-  serverComponentsExternalPackages: [],
+  experimental: {
+    // Ensure @novu/api and Zod are properly bundled for serverless functions
+    serverComponentsExternalPackages: [],
+  },
 
   webpack: (config, { isServer }) => {
     if (isServer) {
@@ -36,26 +38,13 @@ const nextConfig: NextConfig = {
         });
       }
 
-      // If externals is a function, wrap it to exclude @novu and zod
-      if (typeof config.externals === 'function') {
-        const originalExternals = config.externals;
-        config.externals = [
-          // First check: don't externalize @novu or zod
-          ({ request }: { request?: string }, callback: Function) => {
-            if (request && (request.includes('@novu') || request === 'zod' || request.startsWith('zod/'))) {
-              return; // Don't externalize - bundle it
-            }
-            callback(); // Continue to next check
-          },
-          // Then apply original externals
-          originalExternals,
-        ];
-      }
-
-      // Ensure Zod resolves to a single instance
+      // Resolve aliases for Zod - @novu/api imports 'zod/v3' but we have zod v4
       config.resolve = config.resolve || {};
       config.resolve.alias = {
         ...config.resolve.alias,
+        // Map zod/v3 to zod (for @novu/api compatibility)
+        'zod/v3': require.resolve('zod'),
+        // Ensure zod resolves to a single instance
         'zod': require.resolve('zod'),
       };
     }
