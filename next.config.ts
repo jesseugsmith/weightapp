@@ -17,20 +17,44 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: __dirname,
 
   // Fix Novu SDK bundling issues on Vercel
+  // Ensure @novu/api and Zod are properly bundled for serverless functions
+  serverComponentsExternalPackages: [],
+
   webpack: (config, { isServer }) => {
     if (isServer) {
-      // Ensure @novu/api and its dependencies are bundled correctly
-      config.externals = config.externals || [];
+      // Prevent externalizing @novu/api and zod - they must be bundled
+      // This preserves Zod's internal structure (_zod) in serverless functions
+      const originalExternals = config.externals;
       
-      // Don't externalize @novu/api - bundle it completely
-      if (Array.isArray(config.externals)) {
-        config.externals = config.externals.filter((external: any) => {
-          if (typeof external === 'string') {
-            return !external.includes('@novu');
+      config.externals = (context, request, callback) => {
+        // Don't externalize @novu packages or zod
+        if (request && (request.includes('@novu') || request === 'zod' || request.startsWith('zod/'))) {
+          return callback();
+        }
+        
+        // Apply default externalization for other packages
+        if (typeof originalExternals === 'function') {
+          return originalExternals(context, request, callback);
+        }
+        if (Array.isArray(originalExternals)) {
+          for (const external of originalExternals) {
+            if (typeof external === 'function') {
+              const result = external(context, request, callback);
+              if (result !== undefined) return result;
+            } else if (typeof external === 'string' && request === external) {
+              return callback();
+            }
           }
-          return true;
-        });
-      }
+        }
+        return callback();
+      };
+
+      // Ensure Zod resolves to a single instance
+      config.resolve = config.resolve || {};
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        'zod': require.resolve('zod'),
+      };
     }
     return config;
   },
